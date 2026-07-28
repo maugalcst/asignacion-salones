@@ -58,7 +58,7 @@ async function main() {
 
   const passwordHash = await bcrypt.hash("admin123", 12);
   const people = [
-    ["Juan García Gallegos", "admin", UserRole.ADMIN, 0],
+    ["Juan García Gallegos", "admin@uanl.edu.mx", UserRole.ADMIN, 0],
     ["Aldair Alejandro Beltran Melendez", "1802548", UserRole.TEACHER, 0],
     ["María López Hernández", "coord1", UserRole.COORDINATOR, 0],
     ["Carlos Rodríguez Pérez", "coord2", UserRole.COORDINATOR, 0],
