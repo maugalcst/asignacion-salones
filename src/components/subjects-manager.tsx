@@ -2,13 +2,14 @@
 
 import { useMemo, useState, useTransition } from "react";
 import {
+    ArrowDown,
     ArrowLeft,
     ArrowRight,
+    ArrowUp,
     ArrowUpDown,
     Grid3X3,
     Pencil,
     Plus,
-    Search,
     Trash2,
     X
 } from "lucide-react";
@@ -61,7 +62,19 @@ export function SubjectsManager({ subjects, careers }: { subjects: Subject[]; ca
     const [careerFilter, setCareerFilter] = useState("all");
     const [semesterFilter, setSemesterFilter] = useState("all");
     const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
+    const [sortKey, setSortKey] = useState<string | null>(null);
+    const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
     const [pending, startTransition] = useTransition();
+
+    const handleSort = (key: string) => {
+        if (sortKey !== key) { setSortKey(key); setSortDir("asc"); }
+        else if (sortDir === "asc") { setSortDir("desc"); }
+        else { setSortKey(null); setSortDir(null); }
+    };
+    const SortIcon = ({ column }: { column: string }) => {
+        if (sortKey !== column) return <ArrowUpDown size={12} />;
+        return sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />;
+    };
 
     const selected = useMemo(
         () => subjects.find((subject) => subject.id === form.id),
@@ -95,6 +108,20 @@ export function SubjectsManager({ subjects, careers }: { subjects: Subject[]; ca
             return matchesSearch && matchesCareer && matchesSemester;
         });
     }, [subjects, search, careerFilter, semesterFilter]);
+
+    const sorted = (() => {
+        if (!sortKey || !sortDir) return rows;
+        return [...rows].sort((a, b) => {
+            let av: string | number, bv: string | number;
+            if (sortKey === "code") { av = a.code; bv = b.code; }
+            else if (sortKey === "name") { av = a.name; bv = b.name; }
+            else if (sortKey === "type") { av = a.type; bv = b.type; }
+            else if (sortKey === "semester") { av = a.semester; bv = b.semester; if (typeof av === "number" && typeof bv === "number") return sortDir === "asc" ? av - bv : bv - av; }
+            else return 0;
+            const al = (av as string).toLowerCase(), bl = (bv as string).toLowerCase();
+            return al < bl ? (sortDir === "asc" ? -1 : 1) : al > bl ? (sortDir === "asc" ? 1 : -1) : 0;
+        });
+    })();
 
     const openAdd = () => {
         setNotice(null);
@@ -201,19 +228,12 @@ export function SubjectsManager({ subjects, careers }: { subjects: Subject[]; ca
                 </div>
             )}
             <section className="table-card subject-card">
-                <div className="subject-heading">
+                <div className="table-heading">
                     <div>
                         <h2>Materias registradas</h2>
                         <p>Cantidad de materias: {subjects.length}</p>
                     </div>
-
-                    <button className="round-add" type="button" onClick={openAdd} aria-label="Agregar materia">
-                        <Plus />
-                    </button>
-                </div>
-
-                <div className="filters-row">
-                    <div className="filter-group">
+                    <div className="table-filters">
                         <select value={careerFilter} onChange={(event) => setCareerFilter(event.target.value)}>
                             <option value="all">Carrera</option>
                             {careers.map((career) => (
@@ -222,7 +242,6 @@ export function SubjectsManager({ subjects, careers }: { subjects: Subject[]; ca
                                 </option>
                             ))}
                         </select>
-
                         <select value={semesterFilter} onChange={(event) => setSemesterFilter(event.target.value)}>
                             <option value="all">Semestre</option>
                             {semesterOptions.map((semester) => (
@@ -231,48 +250,47 @@ export function SubjectsManager({ subjects, careers }: { subjects: Subject[]; ca
                                 </option>
                             ))}
                         </select>
-                    </div>
-
-                    <label className="search-box">
-                        <Search size={15} />
                         <input
                             placeholder="Buscar materia..."
                             value={search}
                             onChange={(event) => setSearch(event.target.value)}
                         />
-                    </label>
+                        <button className="round-add" type="button" onClick={openAdd} aria-label="Agregar materia">
+                            <Plus />
+                        </button>
+                    </div>
                 </div>
 
                 <div className="table-scroll">
                     <table>
                         <thead>
                             <tr>
-                                <th>
-                                    <ArrowUpDown size={12} /> Clave
+                                <th className="sortable" onClick={() => handleSort("code")}>
+                                    <SortIcon column="code" /> Clave
                                 </th>
-                                <th>
-                                    <ArrowUpDown size={12} /> Nombre
+                                <th className="sortable" onClick={() => handleSort("name")}>
+                                    <SortIcon column="name" /> Nombre
                                 </th>
-                                <th>
-                                    <ArrowUpDown size={12} /> Tipo
+                                <th className="sortable" onClick={() => handleSort("type")}>
+                                    <SortIcon column="type" /> Tipo
                                 </th>
                                 <th>Carrera</th>
-                                <th>
-                                    <ArrowUpDown size={12} /> Semestre
+                                <th className="sortable" onClick={() => handleSort("semester")}>
+                                    <SortIcon column="semester" /> Semestre
                                 </th>
                                 <th>Acciones</th>
                             </tr>
                         </thead>
 
                         <tbody>
-                            {rows.length === 0 ? (
+                            {sorted.length === 0 ? (
                                 <tr>
                                     <td colSpan={6} className="empty-row">
                                         No se encontraron materias con los filtros seleccionados.
                                     </td>
                                 </tr>
                             ) : (
-                                rows.map((subject) => (
+                                sorted.map((subject) => (
                                     <tr key={subject.id}>
                                         <td>{subject.code}</td>
                                         <td>{subject.name}</td>

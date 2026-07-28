@@ -106,7 +106,7 @@ export async function approveRequestAction(
 
     const request = await prisma.classroomRequest.findUnique({
       where: { id: requestId },
-      include: { classroom: true }
+      include: { classroom: true, schedules: true }
     });
 
     if (!request || request.status !== RequestStatus.PENDING) {
@@ -117,17 +117,19 @@ export async function approveRequestAction(
       return { ok: false, error: "El salón está inhabilitado o en mantenimiento." };
     }
 
-    const conflict = await prisma.classroomRequest.findFirst({
+    const overlap = await prisma.classroomRequestSchedule.findFirst({
       where: {
-        id: { not: request.id },
-        classroomId: request.classroomId,
-        dayOfWeek: request.dayOfWeek,
-        schoolHourId: request.schoolHourId,
-        status: RequestStatus.APPROVED
+        classroomRequest: {
+          classroomId: request.classroomId,
+          status: RequestStatus.APPROVED,
+          id: { not: request.id }
+        },
+        dayOfWeek: { in: request.schedules.map(s => s.dayOfWeek) },
+        schoolHourId: { in: request.schedules.map(s => s.schoolHourId) }
       }
     });
 
-    if (conflict) {
+    if (overlap) {
       return { ok: false, error: "Ya existe una asignación aprobada para ese salón en el mismo día y hora." };
     }
 

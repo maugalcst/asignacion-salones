@@ -36,6 +36,15 @@ type SubjectRequest = {
         startTime: string;
         endTime: string;
     };
+    schedules: {
+        dayOfWeek: string;
+        schoolHourId: number;
+        schoolHour: {
+            code: string;
+            startTime: string;
+            endTime: string;
+        };
+    }[];
 };
 
 type Subject = {

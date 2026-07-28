@@ -453,6 +453,47 @@ a {
     font-size: 11px
 }
 
+.table-filters {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap
+}
+
+.table-filters select,
+.table-filters input {
+    height: 34px;
+    border: 1px solid #dfe4e7;
+    border-radius: 3px;
+    font-size: 11px;
+    background: #fff;
+    padding: 0 10px;
+    min-width: 120px
+}
+
+.table-filters input {
+    width: min(200px, 100%);
+    min-width: 100px
+}
+
+th.sortable {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap
+}
+
+th.sortable:hover {
+    background: #f0f3f5
+}
+
+.empty-state {
+    text-align: center;
+    padding: 30px 16px;
+    color: #8b9aA0;
+    font-size: 12px;
+    font-style: italic
+}
+
 .table-scroll {
     overflow: auto
 }

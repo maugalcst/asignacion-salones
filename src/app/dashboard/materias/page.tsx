@@ -134,6 +134,7 @@ export default async function PendingSubjectsPage() {
           }
         },
         include: {
+          classroom: true,
           schedules: {
             include: {
               schoolHour: true
@@ -155,6 +156,36 @@ export default async function PendingSubjectsPage() {
     label
   }));
 
+  const transformedSubjects = subjects.map(s => ({
+    id: s.id, code: s.code, name: s.name, type: s.type, semester: s.semester, careers: s.careers,
+    groupSubjects: s.groupSubjects.map(gs => ({
+      id: gs.id,
+      group: gs.group,
+      requests: gs.requests.flatMap(r =>
+        r.schedules.map(sch => ({
+          id: r.id,
+          dayOfWeek: sch.dayOfWeek,
+          status: r.status,
+          classroom: r.classroom,
+          schoolHour: sch.schoolHour,
+          schedules: [{
+            dayOfWeek: sch.dayOfWeek,
+            schoolHourId: sch.schoolHourId,
+            schoolHour: sch.schoolHour
+          }]
+        }))
+      )
+    }))
+  }));
+
+  const transformedBusy = busyRequests.map(r => ({
+    classroomId: r.classroom!.id,
+    schedules: r.schedules.map(sch => ({
+      dayOfWeek: sch.dayOfWeek,
+      schoolHourId: sch.schoolHourId
+    }))
+  }));
+
   return (
     <>
       <DashboardHeader
@@ -163,12 +194,12 @@ export default async function PendingSubjectsPage() {
       />
 
       <PendingSubjectsManager
-        subjects={subjects}
+        subjects={transformedSubjects}
         groups={groups}
         classrooms={classrooms}
         schoolHours={schoolHours}
         days={days}
-        busyRequests={busyRequests}
+        busyRequests={transformedBusy}
       />
     </>
   );

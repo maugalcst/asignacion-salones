@@ -20,7 +20,7 @@ const statusLabel: Record<ClassroomStatus, string> = {
 export default async function AvailableClassroomsPage() {
   const classrooms = await prisma.classroom.findMany({
     include: {
-      requests: { where: { status: "APPROVED" }, include: { schoolHour: true } },
+      requests: { where: { status: "APPROVED" }, include: { schedules: { include: { schoolHour: true } } } },
       unavailable: { where: { active: true }, include: { schoolHour: true } }
     },
     orderBy: [{ building: "asc" }, { floor: "asc" }, { number: "asc" }]
@@ -37,7 +37,7 @@ export default async function AvailableClassroomsPage() {
               <tbody>{classrooms.map((classroom) => <tr key={classroom.id}>
                 <td>{classroom.building}</td><td>{classroom.floor}</td><td>{classroom.number}</td><td>{classroom.capacity}</td><td>{classroom.type}</td><td><span className={`status ${classroom.status.toLowerCase()}`}>{statusLabel[classroom.status]}</span>{classroom.blockReason ? <small className="status-note">{classroom.blockReason}</small> : null}</td>
                 <td><div className="schedule-list">
-                  {classroom.requests.map((request) => <span className="schedule-chip" key={request.id}>{dayLabels[request.dayOfWeek]} · {request.schoolHour.code}</span>)}
+                  {classroom.requests.flatMap((request) => request.schedules.map((sch) => <span className="schedule-chip" key={`${request.id}-${sch.id}`}>{dayLabels[sch.dayOfWeek]} · {sch.schoolHour.code}</span>))}
                   {classroom.unavailable.map((slot) => <span className="schedule-chip blocked" key={`b-${slot.id}`}>{dayLabels[slot.dayOfWeek]} · {slot.schoolHour.code} · {slot.reason}</span>)}
                   {classroom.requests.length === 0 && classroom.unavailable.length === 0 ? <span className="muted">Sin bloqueos</span> : null}
                 </div></td>

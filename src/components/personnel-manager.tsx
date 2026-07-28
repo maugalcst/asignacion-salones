@@ -3,13 +3,14 @@
 import { useMemo, useState, useTransition } from "react";
 import {
     AlertCircle,
+    ArrowDown,
     ArrowLeft,
     ArrowRight,
+    ArrowUp,
     ArrowUpDown,
     CheckCircle2,
     Pencil,
     Plus,
-    Search,
     Trash2,
     X
 } from "lucide-react";
@@ -85,7 +86,19 @@ export function PersonnelManager({
     const [roleFilter, setRoleFilter] = useState("");
     const [search, setSearch] = useState("");
     const [page, setPage] = useState(1);
+    const [sortKey, setSortKey] = useState<string | null>(null);
+    const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
     const [pending, startTransition] = useTransition();
+
+    const handleSort = (key: string) => {
+        if (sortKey !== key) { setSortKey(key); setSortDir("asc"); }
+        else if (sortDir === "asc") { setSortDir("desc"); }
+        else { setSortKey(null); setSortDir(null); }
+    };
+    const SortIcon = ({ column }: { column: string }) => {
+        if (sortKey !== column) return <ArrowUpDown size={12} />;
+        return sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />;
+    };
 
     const selected = useMemo(
         () => people.find((person) => person.id === form.id),
@@ -117,7 +130,19 @@ export function PersonnelManager({
 
     const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
     const safePage = Math.min(page, pageCount);
-    const visible = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+    const sorted = (() => {
+        if (!sortKey || !sortDir) return filtered;
+        return [...filtered].sort((a, b) => {
+            let av: string, bv: string;
+            if (sortKey === "name") { av = a.name; bv = b.name; }
+            else if (sortKey === "role") { av = roleLabel[a.role]; bv = roleLabel[b.role]; }
+            else if (sortKey === "career") { av = a.career?.acronym || ""; bv = b.career?.acronym || ""; }
+            else return 0;
+            const al = av.toLowerCase(), bl = bv.toLowerCase();
+            return al < bl ? (sortDir === "asc" ? -1 : 1) : al > bl ? (sortDir === "asc" ? 1 : -1) : 0;
+        });
+    })();
+    const visible = sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
     const changeFilter = (setter: (value: string) => void, value: string) => {
         setter(value);
@@ -235,19 +260,12 @@ export function PersonnelManager({
             {notice && !mode ? <FloatingNotice notice={notice} onClose={() => setNotice(null)} /> : null}
 
             <section className="table-card subject-card classroom-card">
-                <div className="subject-heading">
+                <div className="table-heading">
                     <div>
                         <h2>Personal registrado</h2>
                         <p>Administra usuarios, carreras asociadas y roles.</p>
                     </div>
-
-                    <button className="round-add" onClick={openAdd} aria-label="Agregar personal">
-                        <Plus size={20} />
-                    </button>
-                </div>
-
-                <div className="filters-row classroom-filters">
-                    <div className="filter-group">
+                    <div className="table-filters">
                         <select
                             value={careerFilter}
                             onChange={(event) => changeFilter(setCareerFilter, event.target.value)}
@@ -259,7 +277,6 @@ export function PersonnelManager({
                                 </option>
                             ))}
                         </select>
-
                         <select
                             value={roleFilter}
                             onChange={(event) => changeFilter(setRoleFilter, event.target.value)}
@@ -269,10 +286,6 @@ export function PersonnelManager({
                             <option value="COORDINATOR">Coordinador</option>
                             <option value="TEACHER">Ayudante</option>
                         </select>
-                    </div>
-
-                    <label className="search-box">
-                        <Search size={15} />
                         <input
                             value={search}
                             onChange={(event) => {
@@ -281,24 +294,27 @@ export function PersonnelManager({
                             }}
                             placeholder="Buscar por nombre, usuario, carrera o rol..."
                         />
-                    </label>
+                        <button className="round-add" onClick={openAdd} aria-label="Agregar personal">
+                            <Plus size={20} />
+                        </button>
+                    </div>
                 </div>
 
                 <div className="table-scroll">
                     <table>
                         <thead>
                             <tr>
-                                <th>
-                                    <ArrowUpDown size={12} /> Usuario
+                                <th className="sortable" onClick={() => handleSort("name")}>
+                                    <SortIcon column="name" /> Nombre
                                 </th>
                                 <th>
-                                    <ArrowUpDown size={12} /> Nombre
+                                    Usuario
                                 </th>
-                                <th>
-                                    <ArrowUpDown size={12} /> Carrera
+                                <th className="sortable" onClick={() => handleSort("career")}>
+                                    <SortIcon column="career" /> Carrera
                                 </th>
-                                <th>
-                                    <ArrowUpDown size={12} /> Rol
+                                <th className="sortable" onClick={() => handleSort("role")}>
+                                    <SortIcon column="role" /> Rol
                                 </th>
                                 <th>Acciones</th>
                             </tr>
