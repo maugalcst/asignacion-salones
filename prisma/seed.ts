@@ -60,6 +60,10 @@ async function main() {
   const people = [
     ["Juan García Gallegos", "admin", UserRole.ADMIN, 0],
     ["Aldair Alejandro Beltran Melendez", "1802548", UserRole.TEACHER, 0],
+    ["María López Hernández", "coord1", UserRole.COORDINATOR, 0],
+    ["Carlos Rodríguez Pérez", "coord2", UserRole.COORDINATOR, 0],
+    ["Ana Martínez García", "1804589", UserRole.TEACHER, 1],
+    ["Luis Fernando Torres", "coord3", UserRole.COORDINATOR, 3],
   ] as const;
 
   const users = await Promise.all(
@@ -185,23 +189,36 @@ async function main() {
     });
   }
 
+  const subjects = await Promise.all([
+    prisma.subject.create({ data: { code: "ITS-101", name: "Programación I", type: "Ordinaria", semester: 1, careers: { connect: [{ id: careers[0].id }] } } }),
+    prisma.subject.create({ data: { code: "ITS-201", name: "Estructuras de Datos", type: "Ordinaria", semester: 2, careers: { connect: [{ id: careers[0].id }] } } }),
+    prisma.subject.create({ data: { code: "IEC-101", name: "Circuitos Eléctricos", type: "Laboratorio", semester: 1, careers: { connect: [{ id: careers[1].id }] } } }),
+    prisma.subject.create({ data: { code: "IMA-201", name: "Termodinámica", type: "Ordinaria", semester: 3, careers: { connect: [{ id: careers[2].id }] } } }),
+    prisma.subject.create({ data: { code: "IAS-301", name: "Base de Datos", type: "Ordinaria", semester: 3, careers: { connect: [{ id: careers[3].id }] } } }),
+    prisma.subject.create({ data: { code: "LAB-101", name: "Laboratorio de Física", type: "Laboratorio", semester: 1, careers: { connect: [{ id: careers[0].id }, { id: careers[1].id }] } } }),
+  ]);
+
   const statuses = [RequestStatus.PENDING, RequestStatus.REJECTED, RequestStatus.APPROVED, RequestStatus.PENDING, RequestStatus.PENDING, RequestStatus.APPROVED, RequestStatus.PENDING, RequestStatus.REJECTED];
   const days = [WeekDay.MONDAY, WeekDay.TUESDAY, WeekDay.WEDNESDAY, WeekDay.THURSDAY, WeekDay.FRIDAY, WeekDay.MONDAY, WeekDay.TUESDAY, WeekDay.WEDNESDAY];
   for (let i = 0; i < statuses.length; i++) {
     const status = statuses[i];
-    await prisma.classroomRequest.create({
+    const req = await prisma.classroomRequest.create({
       data: {
         coordinatorId: users[3].id,
         careerId: careers[0].id,
         subjectId: subjects[i % subjects.length].id,
         classroomId: classrooms[i % classrooms.length].id,
         semester: subjects[i % subjects.length].semester,
-        dayOfWeek: days[i],
-        schoolHourId: schoolHours[i % schoolHours.length].id,
         status,
         rejectionReason: status === RequestStatus.REJECTED ? "El salón no está disponible en ese horario." : null,
         reviewedById: status === RequestStatus.PENDING ? null : users[0].id,
-        reviewedAt: status === RequestStatus.PENDING ? null : new Date()
+        reviewedAt: status === RequestStatus.PENDING ? null : new Date(),
+        schedules: {
+          create: {
+            dayOfWeek: days[i],
+            schoolHourId: schoolHours[i % schoolHours.length].id,
+          }
+        }
       }
     });
   }
