@@ -70,7 +70,7 @@ npm run db:seed      # repoblar con datos de prueba
 npm run db:reset     # reset completo + seed (borra todos los datos locales)
 ```
 
-Cuenta de prueba tras seed: `admin@uanl.edu.mx` / `admin123` (rol ADMIN).
+Cuenta de prueba tras seed: `admin` / `admin123` (rol ADMIN).
 
 No existe todavía suite de tests automatizados ni CI configurado. Hasta que
 exista, **`npm run build` + `npm run lint` son el mínimo a correr** después de
