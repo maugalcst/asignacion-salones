@@ -524,17 +524,37 @@ export async function deleteClassroomAction(
   }
 }
 const scheduleItemSchema = z.object({
-  dayOfWeek: z.nativeEnum(WeekDay),
-  schoolHourId: z.coerce.number().int().positive()
+  dayOfWeek: z.nativeEnum(WeekDay, {
+    errorMap: () => ({
+      message: "Selecciona un día."
+    })
+  }),
+  schoolHourId: z.coerce
+    .number()
+    .int("La hora escolar no es válida.")
+    .positive("Selecciona una hora escolar.")
 });
 
 const groupRequestSchema = z.object({
-  subjectId: z.coerce.number().int().positive(),
-  classroomId: z.coerce.number().int().positive(),
-  groupCode: z.string().trim().min(1).default("1"),
-  schedules: z.array(scheduleItemSchema).min(1, "Agrega al menos un horario.")
-});
+  subjectId: z.coerce
+    .number()
+    .int()
+    .positive("La materia no es válida."),
 
+  groupCode: z
+    .string()
+    .trim()
+    .min(1, "Escribe el grupo."),
+
+  classroomId: z.coerce
+    .number()
+    .int()
+    .positive("Selecciona un salón."),
+
+  schedules: z
+    .array(scheduleItemSchema)
+    .min(1, "Agrega al menos un horario.")
+});
 export async function requestGroupClassroomAction(
   firstArg: FormData | ActionState | undefined,
   secondArg?: FormData
@@ -573,8 +593,8 @@ export async function requestGroupClassroomAction(
 
     const parsed = groupRequestSchema.safeParse({
       subjectId: formData.get("subjectId"),
+      groupCode: formData.get("groupCode"),
       classroomId: formData.get("classroomId"),
-      groupCode: formData.get("groupCode") || "1",
       schedules: schedulesJson
     });
 
@@ -585,7 +605,9 @@ export async function requestGroupClassroomAction(
       };
     }
 
-    const { subjectId, classroomId, groupCode, schedules } = parsed.data;
+    const { subjectId, groupCode, classroomId, schedules } = parsed.data;
+
+    const normalizedGroupCode = groupCode.trim().toUpperCase();
 
     const subject = await prisma.subject.findUnique({
       where: {
@@ -603,11 +625,11 @@ export async function requestGroupClassroomAction(
       };
     }
 
-    const subjectBelongsToUserCareer = subject.careers.some(
+    const subjectBelongsToCareer = subject.careers.some(
       (career) => career.id === user.careerId
     );
 
-    if (!subjectBelongsToUserCareer) {
+    if (!subjectBelongsToCareer) {
       return {
         ok: false,
         error: "La materia seleccionada no pertenece a tu carrera."
@@ -627,7 +649,40 @@ export async function requestGroupClassroomAction(
       };
     }
 
-    const normalizedGroupCode = groupCode.trim() || "1";
+    const scheduleKeys = new Set(
+      schedules.map(
+        (schedule) => `${schedule.dayOfWeek}-${schedule.schoolHourId}`
+      )
+    );
+
+    if (scheduleKeys.size !== schedules.length) {
+      return {
+        ok: false,
+        error: "No puedes agregar el mismo día y hora más de una vez."
+      };
+    }
+
+    const schoolHourIds = Array.from(
+      new Set(schedules.map((schedule) => schedule.schoolHourId))
+    );
+
+    const schoolHours = await prisma.schoolHour.findMany({
+      where: {
+        id: {
+          in: schoolHourIds
+        }
+      },
+      orderBy: {
+        sortOrder: "asc"
+      }
+    });
+
+    if (schoolHours.length !== schoolHourIds.length) {
+      return {
+        ok: false,
+        error: "Una o más horas escolares no existen."
+      };
+    }
 
     let group = await prisma.academicGroup.findFirst({
       where: {
@@ -649,38 +704,6 @@ export async function requestGroupClassroomAction(
       });
     }
 
-    const uniqueScheduleKeys = new Set(
-      schedules.map((schedule) => `${schedule.dayOfWeek}-${schedule.schoolHourId}`)
-    );
-
-    if (uniqueScheduleKeys.size !== schedules.length) {
-      return {
-        ok: false,
-        error: "No puedes agregar el mismo día y hora más de una vez."
-      };
-    }
-
-    const schoolHourIds = schedules.map((schedule) => schedule.schoolHourId);
-    const uniqueSchoolHourIds = Array.from(new Set(schoolHourIds));
-
-    const schoolHours = await prisma.schoolHour.findMany({
-      where: {
-        id: {
-          in: uniqueSchoolHourIds
-        }
-      },
-      orderBy: {
-        sortOrder: "asc"
-      }
-    });
-
-    if (schoolHours.length !== uniqueSchoolHourIds.length) {
-      return {
-        ok: false,
-        error: "Una o más horas escolares no existen."
-      };
-    }
-
     const unavailableSlots = await prisma.classroomUnavailableSlot.findMany({
       where: {
         classroomId,
@@ -696,7 +719,7 @@ export async function requestGroupClassroomAction(
     });
 
     if (unavailableSlots.length > 0) {
-      const blockedHours = unavailableSlots
+      const blockedText = unavailableSlots
         .map((slot) => {
           const dayName =
             {
@@ -708,52 +731,67 @@ export async function requestGroupClassroomAction(
               SATURDAY: "Sábado"
             }[slot.dayOfWeek] || slot.dayOfWeek;
 
-          return `${dayName} ${slot.schoolHour.code}: ${slot.reason || "No disponible"}`;
+          return `${dayName} ${slot.schoolHour.code}`;
         })
         .join(", ");
 
       return {
         ok: false,
-        error: `El salón está inhabilitado en estos horarios: ${blockedHours}.`
+        error: `El salón está inhabilitado en estos horarios: ${blockedText}.`
       };
     }
 
-    const conflictingRequests = await prisma.classroomRequest.findMany({
+    const conflicts = await prisma.classroomRequest.findMany({
       where: {
         classroomId,
         status: {
           in: [RequestStatus.PENDING, RequestStatus.APPROVED]
         },
-        OR: schedules.map((schedule) => ({
-          dayOfWeek: schedule.dayOfWeek,
-          schoolHourId: schedule.schoolHourId
-        }))
+        schedules: {
+          some: {
+            OR: schedules.map((schedule) => ({
+              dayOfWeek: schedule.dayOfWeek,
+              schoolHourId: schedule.schoolHourId
+            }))
+          }
+        }
       },
       include: {
-        schoolHour: true
+        schedules: {
+          include: {
+            schoolHour: true
+          }
+        },
+        groupSubject: {
+          include: {
+            group: true
+          }
+        }
       }
     });
 
-    if (conflictingRequests.length > 0) {
-      const conflictedHours = conflictingRequests
-        .map((request) => {
-          const dayName =
-            {
-              MONDAY: "Lunes",
-              TUESDAY: "Martes",
-              WEDNESDAY: "Miércoles",
-              THURSDAY: "Jueves",
-              FRIDAY: "Viernes",
-              SATURDAY: "Sábado"
-            }[request.dayOfWeek] || request.dayOfWeek;
+    if (conflicts.length > 0) {
+      const conflictText = conflicts
+        .flatMap((request) =>
+          request.schedules.map((schedule) => {
+            const dayName =
+              {
+                MONDAY: "Lunes",
+                TUESDAY: "Martes",
+                WEDNESDAY: "Miércoles",
+                THURSDAY: "Jueves",
+                FRIDAY: "Viernes",
+                SATURDAY: "Sábado"
+              }[schedule.dayOfWeek] || schedule.dayOfWeek;
 
-          return `${dayName} ${request.schoolHour.code}`;
-        })
+            return `${dayName} ${schedule.schoolHour.code}`;
+          })
+        )
         .join(", ");
 
       return {
         ok: false,
-        error: `Ya existe una solicitud o asignación para ese salón en estos horarios: ${conflictedHours}.`
+        error: `Ya existe una solicitud o asignación para ese salón en: ${conflictText}.`
       };
     }
 
@@ -773,63 +811,23 @@ export async function requestGroupClassroomAction(
       });
     }
 
-    const existingSameRequests = await prisma.classroomRequest.findMany({
-      where: {
-        groupSubjectId: assignment.id,
+    await prisma.classroomRequest.create({
+      data: {
+        coordinatorId: user.id,
+        careerId: user.careerId,
+        subjectId,
         classroomId,
-        status: {
-          in: [RequestStatus.PENDING, RequestStatus.APPROVED]
-        },
-        OR: schedules.map((schedule) => ({
-          dayOfWeek: schedule.dayOfWeek,
-          schoolHourId: schedule.schoolHourId
-        }))
-      },
-      include: {
-        schoolHour: true
+        semester: subject.semester,
+        groupSubjectId: assignment.id,
+        status: RequestStatus.PENDING,
+        schedules: {
+          create: schedules.map((schedule) => ({
+            dayOfWeek: schedule.dayOfWeek,
+            schoolHourId: schedule.schoolHourId
+          }))
+        }
       }
     });
-
-    if (existingSameRequests.length > 0) {
-      const duplicatedHours = existingSameRequests
-        .map((request) => {
-          const dayName =
-            {
-              MONDAY: "Lunes",
-              TUESDAY: "Martes",
-              WEDNESDAY: "Miércoles",
-              THURSDAY: "Jueves",
-              FRIDAY: "Viernes",
-              SATURDAY: "Sábado"
-            }[request.dayOfWeek] || request.dayOfWeek;
-
-          return `${dayName} ${request.schoolHour.code}`;
-        })
-        .join(", ");
-
-      return {
-        ok: false,
-        error: `Ya existe una solicitud para esta materia y grupo en estos horarios: ${duplicatedHours}.`
-      };
-    }
-
-    await prisma.$transaction(
-      schedules.map((schedule) =>
-        prisma.classroomRequest.create({
-          data: {
-            coordinatorId: user.id,
-            careerId: user.careerId!,
-            subjectId,
-            classroomId,
-            semester: subject.semester,
-            groupSubjectId: assignment.id,
-            dayOfWeek: schedule.dayOfWeek,
-            schoolHourId: schedule.schoolHourId,
-            status: RequestStatus.PENDING
-          }
-        })
-      )
-    );
 
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/materias");
@@ -838,11 +836,7 @@ export async function requestGroupClassroomAction(
     revalidatePath("/admin/solicitudes");
     revalidatePath("/admin/asignaciones");
 
-    return actionOk(
-      schedules.length === 1
-        ? "Solicitud enviada correctamente."
-        : `Se enviaron ${schedules.length} solicitudes correctamente.`
-    );
+    return actionOk("Solicitud enviada correctamente.");
   } catch (error) {
     return actionError(error, "No se pudo enviar la solicitud.");
   }

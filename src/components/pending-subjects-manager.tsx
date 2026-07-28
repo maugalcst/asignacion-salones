@@ -99,7 +99,7 @@ type ScheduleItem = {
 
 type RequestForm = {
     subjectId: number;
-    groupId: string;
+    groupCode: string;
     classroomId: string;
     building: string;
     floor: string;
@@ -107,9 +107,16 @@ type RequestForm = {
     schoolHourId: string;
     schedules: ScheduleItem[];
 };
-const emptyForm: RequestForm = {
+type BusyRequest = {
+    classroomId: number;
+    schedules: {
+        dayOfWeek: string;
+        schoolHourId: number;
+    }[];
+};
+const emptyForm = {
     subjectId: 0,
-    groupId: "1",
+    groupCode: "",
     classroomId: "",
     building: "",
     floor: "",
@@ -117,7 +124,6 @@ const emptyForm: RequestForm = {
     schoolHourId: "",
     schedules: []
 };
-
 const dayLabel: Record<string, string> = {
     MONDAY: "Lunes",
     TUESDAY: "Martes",
@@ -133,19 +139,72 @@ function requestStatusLabel(status: string) {
     if (status === "REJECTED") return "Rechazada";
     return status;
 }
+const shortDayLabel: Record<string, string> = {
+    MONDAY: "L",
+    TUESDAY: "M",
+    WEDNESDAY: "M",
+    THURSDAY: "J",
+    FRIDAY: "V",
+    SATURDAY: "S"
+};
 
+type RequestSchedule = {
+    dayOfWeek: string;
+    schoolHourId: number;
+    schoolHour?: {
+        code: string;
+        startTime?: string;
+        endTime?: string;
+        sortOrder?: number;
+    } | null;
+};
+
+function formatSchedules(schedules: RequestSchedule[]) {
+    if (!schedules.length) return "Sin horario";
+
+    const grouped = new Map<
+        string,
+        {
+            sortOrder: number;
+            days: string[];
+        }
+    >();
+
+    for (const schedule of schedules) {
+        const hourCode = schedule.schoolHour?.code || `Hora ${schedule.schoolHourId}`;
+        const sortOrder = schedule.schoolHour?.sortOrder ?? schedule.schoolHourId;
+
+        if (!grouped.has(hourCode)) {
+            grouped.set(hourCode, {
+                sortOrder,
+                days: []
+            });
+        }
+
+        grouped
+            .get(hourCode)
+            ?.days.push(shortDayLabel[schedule.dayOfWeek] || schedule.dayOfWeek);
+    }
+
+    return Array.from(grouped.entries())
+        .sort(([, a], [, b]) => a.sortOrder - b.sortOrder)
+        .map(([hourCode, data]) => `${data.days.join("")} · ${hourCode}`)
+        .join(", ");
+}
 export function PendingSubjectsManager({
     subjects,
     groups,
     classrooms,
     schoolHours,
-    days
+    days,
+    busyRequests
 }: {
     subjects: Subject[];
     groups: Group[];
     classrooms: Classroom[];
     schoolHours: SchoolHour[];
     days: DayOption[];
+    busyRequests: BusyRequest[];
 }) {
     const [search, setSearch] = useState("");
     const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
@@ -194,7 +253,6 @@ export function PendingSubjectsManager({
         setForm({
             ...emptyForm,
             subjectId: subject.id,
-            groupId: "1"
         });
     };
 
@@ -254,7 +312,7 @@ export function PendingSubjectsManager({
     const submitRequest = () => {
         setNotice(null);
 
-        if (!form.groupId) {
+        if (!form.groupCode) {
             setNotice({
                 type: "error",
                 text: "Selecciona un grupo."
@@ -284,12 +342,10 @@ export function PendingSubjectsManager({
 
         startTransition(async () => {
             const formData = new FormData();
-
             formData.set("subjectId", String(form.subjectId));
-            formData.set("groupId", form.groupId);
+            formData.set("groupCode", form.groupCode.trim().toUpperCase());
             formData.set("classroomId", form.classroomId);
             formData.set("schedules", JSON.stringify(validSchedules));
-
             const result = (await requestGroupClassroomAction(formData)) as
                 | ActionResult
                 | undefined;
@@ -312,7 +368,31 @@ export function PendingSubjectsManager({
             }, 700);
         });
     };
+    const availableSchoolHours = useMemo(() => {
+        if (!form.classroomId || !form.dayOfWeek) return schoolHours;
 
+        const busyHourIds = new Set(
+            busyRequests
+                .filter((request) => String(request.classroomId) === form.classroomId)
+                .flatMap((request) =>
+                    request.schedules
+                        .filter((schedule) => schedule.dayOfWeek === form.dayOfWeek)
+                        .map((schedule) => String(schedule.schoolHourId))
+                )
+        );
+
+        const selectedHourIds = new Set(
+            form.schedules
+                .filter((schedule) => schedule.dayOfWeek === form.dayOfWeek)
+                .map((schedule) => schedule.schoolHourId)
+        );
+
+        return schoolHours.filter(
+            (hour) =>
+                !busyHourIds.has(String(hour.id)) &&
+                !selectedHourIds.has(String(hour.id))
+        );
+    }, [schoolHours, busyRequests, form.classroomId, form.dayOfWeek, form.schedules]);
     return (
         <div className="content-wrap">
             {notice && !selectedSubject ? (
@@ -404,10 +484,9 @@ export function PendingSubjectsManager({
                                                         requests.map((request) => (
                                                             <span key={request.id} className="schedule-chip">
                                                                 Grupo {request.groupCode} ·{" "}
-                                                                {dayLabel[request.dayOfWeek]} ·{" "}
-                                                                {request.schoolHour.code} · Ed.{" "}
-                                                                {request.classroom.building} ·{" "}
+                                                                {formatSchedules(request.schedules)}·{" "}
                                                                 {request.classroom.number}
+
                                                                 <b className={`status ${request.status.toLowerCase()}`}>
                                                                     {requestStatusLabel(request.status)}
                                                                 </b>
@@ -489,8 +568,17 @@ export function PendingSubjectsManager({
                         <div className="request-form-grid request-form-grid-3">
                             <div className="form-field">
                                 <label>Grupo</label>
-                                <input value="1" disabled />
-                                <input type="hidden" value={form.groupId} />
+                                <input
+                                    type="text"
+                                    value={form.groupCode}
+                                    placeholder="Ej. 1, 2, 301, 4A"
+                                    onChange={(event) =>
+                                        setForm({
+                                            ...form,
+                                            groupCode: event.target.value.toUpperCase()
+                                        })
+                                    }
+                                />
                             </div>
 
                             <div className="form-field">
@@ -559,7 +647,7 @@ export function PendingSubjectsManager({
                                     }
                                 >
                                     <option value="">Hora</option>
-                                    {schoolHours.map((hour) => (
+                                    {availableSchoolHours.map((hour) => (
                                         <option key={hour.id} value={hour.id}>
                                             {hour.code} · {hour.startTime} - {hour.endTime}
                                         </option>
@@ -603,30 +691,31 @@ export function PendingSubjectsManager({
                                             </td>
                                         </tr>
                                     ) : (
-                                        form.schedules.map((item, index) => {
+                                        form.schedules.map((schedule, index) => {
                                             const hour = schoolHours.find(
-                                                (schoolHour) =>
-                                                    String(schoolHour.id) === item.schoolHourId
+                                                (item) => String(item.id) === String(schedule.schoolHourId)
                                             );
 
                                             return (
-                                                <tr key={`${item.dayOfWeek}-${item.schoolHourId}`}>
+                                                <tr key={`${schedule.dayOfWeek}-${schedule.schoolHourId}-${index}`}>
                                                     <td>
-                                                        <span className="schedule-day-cell">
-                                                            <CalendarDays size={16} />
-                                                            {dayLabel[item.dayOfWeek]}
-                                                        </span>
+                                                        {days.find((day) => day.value === schedule.dayOfWeek)?.label ||
+                                                            schedule.dayOfWeek}
                                                     </td>
-                                                    <td>{hour?.startTime || "—"}</td>
-                                                    <td>{hour?.endTime || "—"}</td>
-                                                    <td>{hour?.code || "—"}</td>
+
+                                                    <td>{hour?.code || `Hora ${schedule.schoolHourId}`}</td>
+
+                                                    <td>
+                                                        {hour ? `${hour.startTime} - ${hour.endTime}` : "Horario no encontrado"}
+                                                    </td>
+
                                                     <td>
                                                         <button
                                                             type="button"
                                                             className="schedule-delete"
                                                             onClick={() => removeSchedule(index)}
                                                         >
-                                                            <Trash2 size={16} />
+                                                            Eliminar
                                                         </button>
                                                     </td>
                                                 </tr>

@@ -35,20 +35,23 @@ enum WeekDay {
 }
 
 model User {
-  id             Int                @id @default(autoincrement())
-  name           String
+  id           Int      @id @default(autoincrement())
+  name         String
   username     String   @unique
-  passwordHash   String
-  role           UserRole           @default(COORDINATOR)
-  active         Boolean            @default(true)
-  careerId       Int?
-  career         Career?            @relation(fields: [careerId], references: [id])
-  requests       ClassroomRequest[] @relation("CreatedRequests")
+  passwordHash String
+  role         UserRole @default(COORDINATOR)
+  active       Boolean  @default(true)
+
+  careerId Int?
+  career   Career? @relation(fields: [careerId], references: [id])
+
+  requests       ClassroomRequest[] @relation("CoordinatorRequests")
   reviewed       ClassroomRequest[] @relation("ReviewedRequests")
-  assignedGroups AcademicGroup[]
+  academicGroups AcademicGroup[]
   sessions       Session[]
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Session {
@@ -61,122 +64,168 @@ model Session {
 }
 
 model Career {
-  id        Int                @id @default(autoincrement())
-  name      String
-  acronym   String             @unique
-  users     User[]
-  subjects  Subject[]
-  groups    AcademicGroup[]
-  requests  ClassroomRequest[]
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
+  id      Int    @id @default(autoincrement())
+  name    String
+  acronym String @unique
+
+  users    User[]
+  subjects Subject[]
+  groups   AcademicGroup[]
+  requests ClassroomRequest[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Subject {
   id       Int    @id @default(autoincrement())
-  code          String            
-  name          String
-  type          String             @default("Ordinaria")
-  semester      Int
+  code     String
+  name     String
+  type     String @default("Ordinaria")
+  semester Int
+
   careers       Career[]
   groupSubjects GroupSubject[]
   requests      ClassroomRequest[]
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([code, type])
 }
 
 model AcademicGroup {
-  id            Int            @id @default(autoincrement())
-  code          String
-  careerId      Int
-  career        Career         @relation(fields: [careerId], references: [id])
-  semester      Int
-  students      Int
+  id       Int    @id @default(autoincrement())
+  code     String
+  semester Int
+  students Int
+
+  careerId Int
+  career   Career @relation(fields: [careerId], references: [id])
+
   coordinatorId Int
-  coordinator   User           @relation(fields: [coordinatorId], references: [id])
-  subjects      GroupSubject[]
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  coordinator   User @relation(fields: [coordinatorId], references: [id])
+
+  subjects GroupSubject[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([code, careerId, semester])
 }
 
 model GroupSubject {
-  id        Int                @id @default(autoincrement())
-  groupId   Int
-  group     AcademicGroup      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  id Int @id @default(autoincrement())
+
+  groupId Int
+  group   AcademicGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
   subjectId Int
-  subject   Subject            @relation(fields: [subjectId], references: [id])
-  requests  ClassroomRequest[]
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  requests ClassroomRequest[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([groupId, subjectId])
 }
 
 model SchoolHour {
-  id          Int                         @id @default(autoincrement())
-  code        String                      @unique
-  shift       String
-  startTime   String
-  endTime     String
-  sortOrder   Int
-  requests    ClassroomRequest[]
-  unavailable ClassroomUnavailableSlot[]
+  id        Int    @id @default(autoincrement())
+  code      String @unique
+  shift     String
+  startTime String
+  endTime   String
+  sortOrder Int
+
+  requestSchedules ClassroomRequestSchedule[]
+  unavailable       ClassroomUnavailableSlot[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Classroom {
-  id          Int                         @id @default(autoincrement())
+  id          Int             @id @default(autoincrement())
   number      String
   building    String
-  floor       Int                         @default(1)
+  floor       Int             @default(1)
   capacity    Int
   type        String
-  status      ClassroomStatus             @default(AVAILABLE)
+  status      ClassroomStatus @default(AVAILABLE)
   blockReason String?
+
   requests    ClassroomRequest[]
   unavailable ClassroomUnavailableSlot[]
-  createdAt   DateTime                    @default(now())
-  updatedAt   DateTime                    @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([number, building])
 }
 
 model ClassroomUnavailableSlot {
-  id           Int        @id @default(autoincrement())
-  classroomId  Int
-  classroom    Classroom  @relation(fields: [classroomId], references: [id], onDelete: Cascade)
-  dayOfWeek    WeekDay
+  id Int @id @default(autoincrement())
+
+  classroomId Int
+  classroom   Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+
+  dayOfWeek WeekDay
+
   schoolHourId Int
   schoolHour   SchoolHour @relation(fields: [schoolHourId], references: [id], onDelete: Cascade)
-  reason       String     @default("Mantenimiento")
-  active       Boolean    @default(true)
-  createdAt    DateTime   @default(now())
+
+  reason    String  @default("Mantenimiento")
+  active    Boolean @default(true)
+  createdAt DateTime @default(now())
 
   @@unique([classroomId, dayOfWeek, schoolHourId])
 }
 
 model ClassroomRequest {
-  id              Int            @id @default(autoincrement())
-  coordinatorId   Int
-  coordinator     User           @relation("CreatedRequests", fields: [coordinatorId], references: [id])
-  careerId        Int
-  career          Career         @relation(fields: [careerId], references: [id])
-  subjectId       Int
-  subject         Subject        @relation(fields: [subjectId], references: [id])
-  groupSubjectId  Int?
-  groupSubject    GroupSubject?  @relation(fields: [groupSubjectId], references: [id])
-  classroomId     Int
-  classroom       Classroom      @relation(fields: [classroomId], references: [id])
-  semester        Int
-  dayOfWeek       WeekDay
-  schoolHourId    Int
-  schoolHour      SchoolHour     @relation(fields: [schoolHourId], references: [id])
-  status          RequestStatus  @default(PENDING)
+  id Int @id @default(autoincrement())
+
+  coordinatorId Int
+  coordinator   User @relation("CoordinatorRequests", fields: [coordinatorId], references: [id])
+
+  careerId Int
+  career   Career @relation(fields: [careerId], references: [id])
+
+  subjectId Int
+  subject   Subject @relation(fields: [subjectId], references: [id])
+
+  classroomId Int
+  classroom   Classroom @relation(fields: [classroomId], references: [id])
+
+  semester Int
+  status   RequestStatus @default(PENDING)
+
   rejectionReason String?
-  reviewedById    Int?
-  reviewedBy      User?          @relation("ReviewedRequests", fields: [reviewedById], references: [id])
-  reviewedAt      DateTime?
-  requestedAt     DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+
+  reviewedById Int?
+  reviewedBy   User? @relation("ReviewedRequests", fields: [reviewedById], references: [id])
+
+  reviewedAt  DateTime?
+  requestedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  groupSubjectId Int?
+  groupSubject   GroupSubject? @relation(fields: [groupSubjectId], references: [id])
+
+  schedules ClassroomRequestSchedule[]
+}
+
+model ClassroomRequestSchedule {
+  id Int @id @default(autoincrement())
+
+  classroomRequestId Int
+  classroomRequest   ClassroomRequest @relation(fields: [classroomRequestId], references: [id], onDelete: Cascade)
+
+  dayOfWeek WeekDay
+
+  schoolHourId Int
+  schoolHour   SchoolHour @relation(fields: [schoolHourId], references: [id])
+
+  @@unique([classroomRequestId, dayOfWeek, schoolHourId])
 }

@@ -1,8 +1,8 @@
 import { WeekDay } from "@prisma/client";
 import { DashboardHeader } from "@/components/dashboard-header";
+import { PendingSubjectsManager } from "@/components/pending-subjects-manager";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { PendingSubjectsManager } from "@/components/pending-subjects-manager";
 
 const dayLabels: Record<WeekDay, string> = {
   MONDAY: "Lunes",
@@ -35,86 +35,120 @@ export default async function PendingSubjectsPage() {
     );
   }
 
-  const [subjects, groups, classrooms, schoolHours] = await Promise.all([
-    prisma.subject.findMany({
-      where: {
-        careers: {
-          some: {
-            id: user.careerId
+  const [subjects, groups, classrooms, schoolHours, busyRequests] =
+    await Promise.all([
+      prisma.subject.findMany({
+        where: {
+          careers: {
+            some: {
+              id: user.careerId
+            }
           }
-        }
-      },
-      include: {
-        careers: true,
-        groupSubjects: {
-          include: {
-            group: {
-              include: {
-                career: true
-              }
-            },
-            requests: {
-              include: {
-                classroom: true,
-                schoolHour: true
+        },
+        include: {
+          careers: true,
+          groupSubjects: {
+            include: {
+              group: {
+                include: {
+                  career: true
+                }
               },
-              orderBy: {
-                requestedAt: "desc"
+              requests: {
+                include: {
+                  classroom: true,
+                  schedules: {
+                    include: {
+                      schoolHour: true
+                    },
+                    orderBy: [
+                      {
+                        schoolHour: {
+                          sortOrder: "asc"
+                        }
+                      }
+                    ]
+                  }
+                },
+                orderBy: {
+                  requestedAt: "desc"
+                }
               }
             }
           }
-        }
-      },
-      orderBy: [
-        {
-          semester: "asc"
         },
-        {
-          name: "asc"
-        }
-      ]
-    }),
+        orderBy: [
+          {
+            semester: "asc"
+          },
+          {
+            name: "asc"
+          }
+        ]
+      }),
 
-    prisma.academicGroup.findMany({
-      where: {
-        careerId: user.careerId
-      },
-      include: {
-        career: true
-      },
-      orderBy: [
-        {
-          semester: "asc"
+      prisma.academicGroup.findMany({
+        where: {
+          careerId: user.careerId
         },
-        {
-          code: "asc"
-        }
-      ]
-    }),
+        include: {
+          career: true
+        },
+        orderBy: [
+          {
+            semester: "asc"
+          },
+          {
+            code: "asc"
+          }
+        ]
+      }),
 
-    prisma.classroom.findMany({
-      where: {
-        status: "AVAILABLE"
-      },
-      orderBy: [
-        {
-          building: "asc"
+      prisma.classroom.findMany({
+        where: {
+          status: "AVAILABLE"
         },
-        {
-          floor: "asc"
-        },
-        {
-          number: "asc"
-        }
-      ]
-    }),
+        orderBy: [
+          {
+            building: "asc"
+          },
+          {
+            floor: "asc"
+          },
+          {
+            number: "asc"
+          }
+        ]
+      }),
 
-    prisma.schoolHour.findMany({
-      orderBy: {
-        sortOrder: "asc"
-      }
-    })
-  ]);
+      prisma.schoolHour.findMany({
+        orderBy: {
+          sortOrder: "asc"
+        }
+      }),
+
+      prisma.classroomRequest.findMany({
+        where: {
+          status: {
+            in: ["PENDING", "APPROVED"]
+          }
+        },
+        include: {
+          schedules: {
+            include: {
+              schoolHour: true
+            },
+            orderBy: [
+              {
+                schoolHour: {
+                  sortOrder: "asc"
+                }
+              }
+            ]
+          }
+        }
+      })
+    ]);
 
   const days = Object.entries(dayLabels).map(([value, label]) => ({
     value: value as WeekDay,
@@ -134,6 +168,7 @@ export default async function PendingSubjectsPage() {
         classrooms={classrooms}
         schoolHours={schoolHours}
         days={days}
+        busyRequests={busyRequests}
       />
     </>
   );
