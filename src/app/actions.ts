@@ -55,7 +55,7 @@ const loginSchema = z.object({
     .trim()
     .min(3, "El usuario debe tener al menos 3 caracteres.")
     .max(40, "El usuario no puede exceder 40 caracteres.")
-    .regex(/^[a-zA-Z0-9._-]+$/, "El usuario solo puede contener letras, números, punto, guion y guion bajo."),
+    .regex(/^[a-zA-Z0-9.@_-]+$/, "El usuario solo puede contener letras, números, punto, arroba, guion y guion bajo."),
   password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres.")
 });
 
@@ -202,7 +202,7 @@ const personSchema = z.object({
     .trim()
     .min(3, "El usuario debe tener al menos 3 caracteres.")
     .max(40, "El usuario no puede exceder 40 caracteres.")
-    .regex(/^[a-zA-Z0-9._-]+$/, "El usuario solo puede contener letras, números, punto, guion y guion bajo."),
+    .regex(/^[a-zA-Z0-9.@_-]+$/, "El usuario solo puede contener letras, números, punto, arroba, guion y guion bajo."),
   password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres.").optional().or(z.literal(""))
 });
 
