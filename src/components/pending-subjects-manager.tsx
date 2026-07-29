@@ -2,13 +2,14 @@
 
 import { useMemo, useState, useTransition } from "react";
 import {
+    ArrowDown,
     ArrowLeft,
     ArrowRight,
+    ArrowUp,
     ArrowUpDown,
     Building2,
     CalendarDays,
     Plus,
-    Search,
     Trash2,
     X
 } from "lucide-react";
@@ -216,7 +217,19 @@ export function PendingSubjectsManager({
     busyRequests: BusyRequest[];
 }) {
     const [search, setSearch] = useState("");
+    const [sortKey, setSortKey] = useState<string | null>(null);
+    const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
     const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
+
+    const handleSort = (key: string) => {
+        if (sortKey !== key) { setSortKey(key); setSortDir("asc"); }
+        else if (sortDir === "asc") { setSortDir("desc"); }
+        else { setSortKey(null); setSortDir(null); }
+    };
+    const SortIcon = ({ column }: { column: string }) => {
+        if (sortKey !== column) return <ArrowUpDown size={12} />;
+        return sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />;
+    };
     const [form, setForm] = useState<RequestForm>(emptyForm);
     const [notice, setNotice] = useState<{
         type: "success" | "error";
@@ -246,6 +259,19 @@ export function PendingSubjectsManager({
                 .includes(term);
         });
     }, [subjects, search]);
+
+    const sorted = useMemo(() => {
+        if (!sortKey || !sortDir) return rows;
+        return [...rows].sort((a, b) => {
+            let av: string | number, bv: string | number;
+            if (sortKey === "code") { av = a.code; bv = b.code; }
+            else if (sortKey === "name") { av = a.name; bv = b.name; }
+            else if (sortKey === "semester") { av = a.semester; bv = b.semester; if (typeof av === "number" && typeof bv === "number") return sortDir === "asc" ? av - bv : bv - av; }
+            else return 0;
+            const al = (av as string).toLowerCase(), bl = (bv as string).toLowerCase();
+            return al < bl ? (sortDir === "asc" ? -1 : 1) : al > bl ? (sortDir === "asc" ? 1 : -1) : 0;
+        });
+    }, [rows, sortKey, sortDir]);
 
     const availableGroups = useMemo(() => {
         if (!selectedSubject) return [];
@@ -424,30 +450,29 @@ export function PendingSubjectsManager({
                         <p>Selecciona una materia y solicita salón por día y hora escolar.</p>
                     </div>
 
-                    <label className="search-box">
-                        <Search size={15} />
+                    <div className="table-filters">
                         <input
                             placeholder="Buscar materia, clave, carrera o tipo..."
                             value={search}
                             onChange={(event) => setSearch(event.target.value)}
                         />
-                    </label>
+                    </div>
                 </div>
 
                 <div className="table-scroll">
                     <table>
                         <thead>
                             <tr>
-                                <th>
-                                    <ArrowUpDown size={12} /> Clave
+                                <th className="sortable" onClick={() => handleSort("code")}>
+                                    <SortIcon column="code" /> Clave
                                 </th>
-                                <th>
-                                    <ArrowUpDown size={12} /> Materia
+                                <th className="sortable" onClick={() => handleSort("name")}>
+                                    <SortIcon column="name" /> Materia
                                 </th>
                                 <th>Tipo</th>
                                 <th>Carrera</th>
-                                <th>
-                                    <ArrowUpDown size={12} /> Semestre
+                                <th className="sortable" onClick={() => handleSort("semester")}>
+                                    <SortIcon column="semester" /> Semestre
                                 </th>
                                 <th>Solicitudes</th>
                                 <th>Nueva solicitud</th>
@@ -462,7 +487,7 @@ export function PendingSubjectsManager({
                                     </td>
                                 </tr>
                             ) : (
-                                rows.map((subject) => {
+                                sorted.map((subject) => {
                                     const requests = subject.groupSubjects.flatMap((groupSubject) =>
                                         groupSubject.requests.map((request) => ({
                                             ...request,
