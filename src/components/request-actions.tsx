@@ -13,8 +13,8 @@ export function RequestActions({ requestId, coordinator }: { requestId: number; 
   return (
     <>
       <div className="row-actions">
-        <button className="accept-btn" onClick={() => setDialog("approve")}>Aceptar</button>
-        <button className="reject-btn" onClick={() => setDialog("reject")}>Rechazar</button>
+        <button className="approve-icon" onClick={() => setDialog("approve")} aria-label="Aceptar"><Check size={16} /></button>
+        <button className="reject-icon" onClick={() => setDialog("reject")} aria-label="Rechazar"><X size={16} /></button>
       </div>
 
       {dialog && (
