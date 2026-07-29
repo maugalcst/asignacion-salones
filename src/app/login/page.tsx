@@ -23,32 +23,26 @@ export default async function LoginPage() {
               priority
             />
           </div>
-
           <h1>Inicio de sesión</h1>
-          <p>Bienvenido de vuelta, ingrese con su cuenta</p>
-
+          <p>Bienvenido de vuelta, ingrese con su cuenta institucional</p>
           <LoginForm />
         </div>
       </section>
-
       <section className="login-hero">
-        <div className="hero-noise" />
-
-        <div className="hero-copy">
-          <div className="bear">
-            <Image
-              src="/images/fime-bear-logo.png"
-              alt="FIME"
-              width={80}
-              height={80}
-              priority
-            />
-          </div>
-
+        <Image src="/images/auth-hero.png" alt="" fill className="hero-bg-img" priority />
+        <div className="hero-overlay" />
+        <div className="hero-content">
+          <Image
+            src="/images/fime-bear-logo.png"
+            alt="FIME"
+            width={96}
+            height={96}
+            priority
+          />
           <h2>Asignación de Salones</h2>
-          <p>eslógan o pequeña descripción</p>
+          <p>Sistema de gestión y asignación de espacios académicos</p>
         </div>
       </section>
-    </main >
+    </main>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { Loader, Lock, User } from "lucide-react";
 import { loginAction } from "@/app/actions";
 
 export function LoginForm() {
@@ -8,17 +9,25 @@ export function LoginForm() {
 
   return (
     <form action={action} className="login-form">
-      <label>
-        Usuario
-        <input name="username" type="text" placeholder="Usuario" required />
-      </label>
-      <label>
-        Contraseña
-        <input name="password" type="password" required minLength={6} />
-      </label>
+      <div className="login-field">
+        <label htmlFor="username">Usuario</label>
+        <div className="input-wrap">
+          <User size={16} className="input-icon" />
+          <input id="username" name="username" type="text" placeholder="usuario@uanl.edu.mx" required />
+        </div>
+      </div>
+      <div className="login-field">
+        <label htmlFor="password">Contraseña</label>
+        <div className="input-wrap">
+          <Lock size={16} className="input-icon" />
+          <input id="password" name="password" type="password" required minLength={6} placeholder="••••••••" />
+        </div>
+      </div>
       {state?.error && <p className="form-error">{state.error}</p>}
-      <p className="account-note">¿No tiene cuenta? aquí puede <span>crear una cuenta</span></p>
-      <button type="submit" disabled={pending}>{pending ? "Ingresando..." : "Ingresar"}</button>
+      <button type="submit" disabled={pending} className="login-btn">
+        {pending && <Loader size={18} className="spin" />}
+        {pending ? "Ingresando..." : "Ingresar"}
+      </button>
     </form>
   );
 }
