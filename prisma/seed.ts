@@ -58,17 +58,17 @@ async function main() {
 
   const passwordHash = await bcrypt.hash("admin123", 12);
   const people = [
-    ["Juan García Gallegos", "admin@uanl.edu.mx", UserRole.ADMIN, 0],
-    ["Aldair Alejandro Beltran Melendez", "1802548", UserRole.TEACHER, 0],
-    ["María López Hernández", "coord1", UserRole.COORDINATOR, 0],
-    ["Carlos Rodríguez Pérez", "coord2", UserRole.COORDINATOR, 0],
-    ["Ana Martínez García", "1804589", UserRole.TEACHER, 1],
-    ["Luis Fernando Torres", "coord3", UserRole.COORDINATOR, 3],
+    ["Juan García Gallegos", "admin@uanl.edu.mx", "juan.garcia@uanl.edu.mx", null, UserRole.ADMIN, 0],
+    ["Aldair Alejandro Beltran Melendez", "1802548", "aldair.beltran@uanl.edu.mx", "1802548", UserRole.TEACHER, 0],
+    ["María López Hernández", "coord1", "maria.lopez@uanl.edu.mx", "CO-1001", UserRole.COORDINATOR, 0],
+    ["Carlos Rodríguez Pérez", "coord2", "carlos.rodriguez@uanl.edu.mx", "CO-1002", UserRole.COORDINATOR, 0],
+    ["Ana Martínez García", "1804589", "ana.martinez@uanl.edu.mx", "1804589", UserRole.TEACHER, 1],
+    ["Luis Fernando Torres", "coord3", "luis.torres@uanl.edu.mx", "CO-1003", UserRole.COORDINATOR, 3],
   ] as const;
 
   const users = await Promise.all(
-    people.map(([name, username, role, careerIndex]) =>
-      prisma.user.create({ data: { name, username, passwordHash, role, careerId: careers[careerIndex].id } })
+    people.map(([name, username, email, employeeNumber, role, careerIndex]) =>
+      prisma.user.create({ data: { name, username, email, employeeNumber, passwordHash, role, careerId: careers[careerIndex].id } })
     )
   );
 
@@ -190,12 +190,12 @@ async function main() {
   }
 
   const subjects = await Promise.all([
-    prisma.subject.create({ data: { code: "ITS-101", name: "Programación I", type: "Ordinaria", semester: 1, careers: { connect: [{ id: careers[0].id }] } } }),
-    prisma.subject.create({ data: { code: "ITS-201", name: "Estructuras de Datos", type: "Ordinaria", semester: 2, careers: { connect: [{ id: careers[0].id }] } } }),
-    prisma.subject.create({ data: { code: "IEC-101", name: "Circuitos Eléctricos", type: "Laboratorio", semester: 1, careers: { connect: [{ id: careers[1].id }] } } }),
-    prisma.subject.create({ data: { code: "IMA-201", name: "Termodinámica", type: "Ordinaria", semester: 3, careers: { connect: [{ id: careers[2].id }] } } }),
-    prisma.subject.create({ data: { code: "IAS-301", name: "Base de Datos", type: "Ordinaria", semester: 3, careers: { connect: [{ id: careers[3].id }] } } }),
-    prisma.subject.create({ data: { code: "LAB-101", name: "Laboratorio de Física", type: "Laboratorio", semester: 1, careers: { connect: [{ id: careers[0].id }, { id: careers[1].id }] } } }),
+    prisma.subject.create({ data: { code: "ITS-101", name: "Programación I", type: "Ordinaria", semester: 1, duracion: 16, cantidad: 90, coordinatorId: users[2].id, careers: { connect: [{ id: careers[0].id }] } } }),
+    prisma.subject.create({ data: { code: "ITS-201", name: "Estructuras de Datos", type: "Ordinaria", semester: 2, duracion: 16, cantidad: 85, coordinatorId: users[3].id, careers: { connect: [{ id: careers[0].id }] } } }),
+    prisma.subject.create({ data: { code: "IEC-101", name: "Circuitos Eléctricos", type: "Laboratorio", semester: 1, duracion: 16, cantidad: 24, careers: { connect: [{ id: careers[1].id }] } } }),
+    prisma.subject.create({ data: { code: "IMA-201", name: "Termodinámica", type: "Ordinaria", semester: 3, duracion: null, cantidad: 60, careers: { connect: [{ id: careers[2].id }] } } }),
+    prisma.subject.create({ data: { code: "IAS-301", name: "Base de Datos", type: "Ordinaria", semester: 3, duracion: 16, cantidad: 75, coordinatorId: users[5].id, careers: { connect: [{ id: careers[3].id }] } } }),
+    prisma.subject.create({ data: { code: "LAB-101", name: "Laboratorio de Física", type: "Laboratorio", semester: 1, duracion: 16, cantidad: 24, careers: { connect: [{ id: careers[0].id }, { id: careers[1].id }] } } }),
   ]);
 
   const statuses = [RequestStatus.PENDING, RequestStatus.REJECTED, RequestStatus.APPROVED, RequestStatus.PENDING, RequestStatus.PENDING, RequestStatus.APPROVED, RequestStatus.PENDING, RequestStatus.REJECTED];
