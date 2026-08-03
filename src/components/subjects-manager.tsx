@@ -27,12 +27,20 @@ type Career = {
     name: string;
 };
 
+type Coordinator = {
+    id: number;
+    name: string;
+};
+
 type Subject = {
     id: number;
     code: string;
     name: string;
     type: string;
     semester: number;
+    duracion: number | null;
+    cantidad: number;
+    coordinator: { id: number; name: string } | null;
     careers: Career[];
 };
 
@@ -42,6 +50,9 @@ type SubjectForm = {
     name: string;
     type: string;
     semester: number;
+    duracion: number | "";
+    cantidad: number;
+    coordinatorId: number | "";
     careerIds: number[];
 };
 
@@ -51,10 +62,13 @@ const blank: SubjectForm = {
     name: "",
     type: "",
     semester: 1,
+    duracion: "",
+    cantidad: 0,
+    coordinatorId: "",
     careerIds: []
 };
 
-export function SubjectsManager({ subjects, careers }: { subjects: Subject[]; careers: Career[] }) {
+export function SubjectsManager({ subjects, careers, coordinators }: { subjects: Subject[]; careers: Career[]; coordinators: Coordinator[] }) {
     const [mode, setMode] = useState<"add" | "edit" | "delete" | null>(null);
     const [form, setForm] = useState<SubjectForm>(blank);
     const [multi, setMulti] = useState(false);
@@ -142,6 +156,9 @@ export function SubjectsManager({ subjects, careers }: { subjects: Subject[]; ca
             name: subject.name,
             type: subject.type,
             semester: subject.semester,
+            duracion: subject.duracion ?? "",
+            cantidad: subject.cantidad,
+            coordinatorId: subject.coordinator?.id ?? "",
             careerIds: subject.careers.map((career) => career.id)
         });
         setMode("edit");
@@ -179,6 +196,9 @@ export function SubjectsManager({ subjects, careers }: { subjects: Subject[]; ca
             formData.set("name", form.name);
             formData.set("type", form.type);
             formData.set("semester", String(form.semester));
+            formData.set("duracion", form.duracion === "" ? "" : String(form.duracion));
+            formData.set("cantidad", String(form.cantidad));
+            formData.set("coordinatorId", form.coordinatorId === "" ? "" : String(form.coordinatorId));
             form.careerIds.forEach((id) => formData.append("careerIds", String(id)));
 
             const result = (await saveSubjectAction(formData)) as ActionResult | undefined;
@@ -278,6 +298,8 @@ export function SubjectsManager({ subjects, careers }: { subjects: Subject[]; ca
                                 <th className="sortable" onClick={() => handleSort("semester")}>
                                     <SortIcon column="semester" /> Semestre
                                 </th>
+                                <th>Cantidad</th>
+                                <th>Coordinador</th>
                                 <th>Acciones</th>
                             </tr>
                         </thead>
@@ -285,7 +307,7 @@ export function SubjectsManager({ subjects, careers }: { subjects: Subject[]; ca
                         <tbody>
                             {sorted.length === 0 ? (
                                 <tr>
-                                    <td colSpan={6} className="empty-row">
+                                    <td colSpan={8} className="empty-row">
                                         No se encontraron materias con los filtros seleccionados.
                                     </td>
                                 </tr>
@@ -305,6 +327,8 @@ export function SubjectsManager({ subjects, careers }: { subjects: Subject[]; ca
                                             </div>
                                         </td>
                                         <td>{subject.semester}to</td>
+                                        <td>{subject.cantidad}</td>
+                                        <td>{subject.coordinator?.name || "—"}</td>
                                         <td>
                                             <div className="crud-actions">
                                                 <button className="edit-btn" type="button" onClick={() => openEdit(subject)}>
@@ -490,6 +514,58 @@ export function SubjectsManager({ subjects, careers }: { subjects: Subject[]; ca
                                             })
                                         }
                                     />
+
+                                    <label>Coordinador</label>
+                                    <select
+                                        value={form.coordinatorId}
+                                        onChange={(event) =>
+                                            setForm({
+                                                ...form,
+                                                coordinatorId: event.target.value === "" ? "" : Number(event.target.value)
+                                            })
+                                        }
+                                    >
+                                        <option value="">Sin coordinador</option>
+                                        {coordinators.map((coordinator) => (
+                                            <option key={coordinator.id} value={coordinator.id}>
+                                                {coordinator.name}
+                                            </option>
+                                        ))}
+                                    </select>
+
+                                    <div className="form-grid-2">
+                                        <div className="form-field">
+                                            <label>Duración</label>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                placeholder="Duración"
+                                                value={form.duracion}
+                                                onChange={(event) =>
+                                                    setForm({
+                                                        ...form,
+                                                        duracion: event.target.value === "" ? "" : Number(event.target.value)
+                                                    })
+                                                }
+                                            />
+                                        </div>
+
+                                        <div className="form-field">
+                                            <label>Cantidad</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                placeholder="Cantidad"
+                                                value={form.cantidad}
+                                                onChange={(event) =>
+                                                    setForm({
+                                                        ...form,
+                                                        cantidad: Number(event.target.value)
+                                                    })
+                                                }
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
 
                                 <div className="form-actions">

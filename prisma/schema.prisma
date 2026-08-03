@@ -35,20 +35,23 @@ enum WeekDay {
 }
 
 model User {
-  id           Int      @id @default(autoincrement())
-  name         String
-  username     String   @unique
-  passwordHash String
-  role         UserRole @default(COORDINATOR)
-  active       Boolean  @default(true)
+  id             Int      @id @default(autoincrement())
+  name           String
+  username       String   @unique
+  email          String?  @unique
+  employeeNumber String?  @unique
+  passwordHash   String
+  role           UserRole @default(COORDINATOR)
+  active         Boolean  @default(true)
 
   careerId Int?
   career   Career? @relation(fields: [careerId], references: [id])
 
-  requests       ClassroomRequest[] @relation("CoordinatorRequests")
-  reviewed       ClassroomRequest[] @relation("ReviewedRequests")
-  academicGroups AcademicGroup[]
-  sessions       Session[]
+  requests            ClassroomRequest[] @relation("CoordinatorRequests")
+  reviewed            ClassroomRequest[] @relation("ReviewedRequests")
+  academicGroups      AcademicGroup[]
+  sessions            Session[]
+  coordinatedSubjects Subject[] @relation("SubjectCoordinator")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -83,10 +86,15 @@ model Subject {
   name     String
   type     String @default("Ordinaria")
   semester Int
+  duracion Int?
+  cantidad Int    @default(0)
 
   careers       Career[]
   groupSubjects GroupSubject[]
   requests      ClassroomRequest[]
+
+  coordinatorId Int?
+  coordinator   User? @relation("SubjectCoordinator", fields: [coordinatorId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

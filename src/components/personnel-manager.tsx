@@ -28,6 +28,8 @@ type Person = {
     id: number;
     name: string;
     username: string;
+    email: string | null;
+    employeeNumber: string | null;
     role: PersonRole;
     careerId: number | null;
     career: Career | null;
@@ -37,6 +39,8 @@ type PersonForm = {
     id: number;
     name: string;
     username: string;
+    email: string;
+    employeeNumber: string;
     role: PersonRole;
     careerId: number;
     password: string;
@@ -65,6 +69,8 @@ const emptyForm: PersonForm = {
     id: 0,
     name: "",
     username: "",
+    email: "",
+    employeeNumber: "",
     role: "TEACHER",
     careerId: 0,
     password: ""
@@ -116,6 +122,8 @@ export function PersonnelManager({
                 !term ||
                 person.name.toLowerCase().includes(term) ||
                 person.username.toLowerCase().includes(term) ||
+                (person.employeeNumber || "").toLowerCase().includes(term) ||
+                (person.email || "").toLowerCase().includes(term) ||
                 roleText.includes(term) ||
                 person.role.toLowerCase().includes(term) ||
                 careerAcronym.includes(term) ||
@@ -168,6 +176,8 @@ export function PersonnelManager({
             id: person.id,
             name: person.name,
             username: person.username,
+            email: person.email || "",
+            employeeNumber: person.employeeNumber || "",
             role: person.role,
             careerId: person.careerId || careers[0]?.id || 0,
             password: ""
@@ -211,12 +221,22 @@ export function PersonnelManager({
     const submit = () => {
         setNotice(null);
 
+        if (form.role === "TEACHER" && !form.employeeNumber.trim()) {
+            setNotice({
+                type: "error",
+                text: "El número de empleado es obligatorio para el rol Ayudante (TEACHER)."
+            });
+            return;
+        }
+
         startTransition(async () => {
             const formData = new FormData();
 
             if (form.id) formData.set("id", String(form.id));
             formData.set("name", form.name);
             formData.set("username", form.username);
+            formData.set("email", form.email);
+            formData.set("employeeNumber", form.employeeNumber);
             formData.set("role", form.role);
             formData.set("careerId", String(form.careerId));
             formData.set("password", form.password);
@@ -310,6 +330,12 @@ export function PersonnelManager({
                                 <th>
                                     Usuario
                                 </th>
+                                <th>
+                                    No. Empleado
+                                </th>
+                                <th>
+                                    Correo
+                                </th>
                                 <th className="sortable" onClick={() => handleSort("career")}>
                                     <SortIcon column="career" /> Carrera
                                 </th>
@@ -324,8 +350,10 @@ export function PersonnelManager({
                             {visible.length > 0 ? (
                                 visible.map((person) => (
                                     <tr key={person.id}>
-                                        <td>{person.username}</td>
                                         <td>{person.name}</td>
+                                        <td>{person.username}</td>
+                                        <td>{person.employeeNumber || "—"}</td>
+                                        <td>{person.email || "—"}</td>
                                         <td>
                                             <span className="career-pill wide">{person.career?.acronym || "—"}</span>
                                         </td>
@@ -358,7 +386,7 @@ export function PersonnelManager({
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={5} style={{ textAlign: "center", padding: "28px 12px", color: "#6b7280" }}>
+                                    <td colSpan={7} style={{ textAlign: "center", padding: "28px 12px", color: "#6b7280" }}>
                                         No hay personal que coincida con los filtros seleccionados.
                                     </td>
                                 </tr>
@@ -441,6 +469,25 @@ export function PersonnelManager({
                                         <option value="COORDINATOR">Coordinador</option>
                                         <option value="ADMIN">Administrador</option>
                                     </select>
+
+                                    <label>
+                                        No. de empleado{form.role === "TEACHER" ? " *" : ""}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder="NÚMERO DE EMPLEADO"
+                                        required={form.role === "TEACHER"}
+                                        value={form.employeeNumber}
+                                        onChange={(event) => setForm({ ...form, employeeNumber: event.target.value })}
+                                    />
+
+                                    <label>Correo</label>
+                                    <input
+                                        type="email"
+                                        placeholder="CORREO ELECTRÓNICO"
+                                        value={form.email}
+                                        onChange={(event) => setForm({ ...form, email: event.target.value })}
+                                    />
 
                                     <label>Usuario</label>
                                     <input

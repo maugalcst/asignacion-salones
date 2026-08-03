@@ -192,19 +192,43 @@ export async function rejectRequestAction(
   }
 }
 
-const personSchema = z.object({
-  id: z.coerce.number().int().positive().optional(),
-  name: z.string().trim().min(3, "El nombre debe tener al menos 3 caracteres."),
-  careerId: z.coerce.number().int().positive("Selecciona un área/carrera."),
-  role: z.enum(["ADMIN", "COORDINATOR", "TEACHER"]),
-  username: z
-    .string()
-    .trim()
-    .min(3, "El usuario debe tener al menos 3 caracteres.")
-    .max(40, "El usuario no puede exceder 40 caracteres.")
-    .regex(/^[a-zA-Z0-9.@_-]+$/, "El usuario solo puede contener letras, números, punto, arroba, guion y guion bajo."),
-  password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres.").optional().or(z.literal(""))
-});
+const personSchema = z
+  .object({
+    id: z.coerce.number().int().positive().optional(),
+    name: z.string().trim().min(3, "El nombre debe tener al menos 3 caracteres."),
+    careerId: z.coerce.number().int().positive("Selecciona un área/carrera."),
+    role: z.enum(["ADMIN", "COORDINATOR", "TEACHER"]),
+    username: z
+      .string()
+      .trim()
+      .min(3, "El usuario debe tener al menos 3 caracteres.")
+      .max(40, "El usuario no puede exceder 40 caracteres.")
+      .regex(/^[a-zA-Z0-9.@_-]+$/, "El usuario solo puede contener letras, números, punto, arroba, guion y guion bajo."),
+    email: z
+      .string()
+      .trim()
+      .max(100, "El correo no puede exceder 100 caracteres.")
+      .email("El correo no es válido.")
+      .optional()
+      .or(z.literal("")),
+    employeeNumber: z
+      .string()
+      .trim()
+      .min(3, "El número de empleado debe tener al menos 3 caracteres.")
+      .max(20, "El número de empleado no puede exceder 20 caracteres.")
+      .optional()
+      .or(z.literal("")),
+    password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres.").optional().or(z.literal(""))
+  })
+  .superRefine((data, ctx) => {
+    if (data.role === "TEACHER" && !data.employeeNumber) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["employeeNumber"],
+        message: "El número de empleado es obligatorio para el rol Ayudante (TEACHER)."
+      });
+    }
+  });
 
 export async function savePersonAction(
   firstArg: FormData | ActionState | undefined,
@@ -221,6 +245,8 @@ export async function savePersonAction(
       careerId: formData.get("careerId"),
       role: formData.get("role"),
       username: formData.get("username"),
+      email: formData.get("email"),
+      employeeNumber: formData.get("employeeNumber"),
       password: formData.get("password")
     });
 
@@ -236,6 +262,8 @@ export async function savePersonAction(
         data: {
           ...data,
           username: normalizeUsername(data.username),
+          email: data.email || null,
+          employeeNumber: data.employeeNumber || null,
           ...(password ? { passwordHash: await bcrypt.hash(password, 12) } : {})
         }
       });
@@ -248,6 +276,8 @@ export async function savePersonAction(
         data: {
           ...data,
           username: normalizeUsername(data.username),
+          email: data.email || null,
+          employeeNumber: data.employeeNumber || null,
           passwordHash: await bcrypt.hash(password, 12)
         }
       });
@@ -305,7 +335,10 @@ const subjectSchema = z.object({
   name: z.string().trim().min(3, "El nombre debe tener al menos 3 caracteres."),
   type: z.string().trim().min(2, "El tipo de materia es obligatorio."),
   semester: z.coerce.number().int().min(1).max(12),
-  careerIds: z.array(z.coerce.number().int().positive()).min(1, "Selecciona al menos una carrera.")
+  careerIds: z.array(z.coerce.number().int().positive()).min(1, "Selecciona al menos una carrera."),
+  duracion: z.coerce.number().int().positive("La duración debe ser un número entero positivo.").nullable().optional().or(z.literal("")),
+  cantidad: z.coerce.number().int().min(0, "La cantidad no puede ser negativa.").default(0),
+  coordinatorId: z.coerce.number().int().positive("Selecciona un coordinador.").nullable().optional().or(z.literal(""))
 });
 
 export async function saveSubjectAction(
@@ -323,14 +356,17 @@ export async function saveSubjectAction(
       name: formData.get("name"),
       type: formData.get("type"),
       semester: formData.get("semester"),
-      careerIds: formData.getAll("careerIds")
+      careerIds: formData.getAll("careerIds"),
+      duracion: formData.get("duracion") || null,
+      cantidad: formData.get("cantidad") || 0,
+      coordinatorId: formData.get("coordinatorId") || null
     });
 
     if (!parsed.success) {
       return { ok: false, error: validationError(parsed.error) };
     }
 
-    const { id, careerIds, ...data } = parsed.data;
+    const { id, careerIds, duracion, coordinatorId, ...data } = parsed.data;
 
     const normalizedCode = data.code.trim().toUpperCase();
     const normalizedType = data.type.trim();
@@ -374,6 +410,8 @@ export async function saveSubjectAction(
           ...data,
           code: normalizedCode,
           type: normalizedType,
+          duracion: duracion || null,
+          coordinatorId: coordinatorId || null,
           careers: relation
         }
       });
@@ -383,6 +421,8 @@ export async function saveSubjectAction(
           ...data,
           code: normalizedCode,
           type: normalizedType,
+          duracion: duracion || null,
+          coordinatorId: coordinatorId || null,
           careers: {
             connect: careerIds.map((careerId) => ({
               id: careerId
