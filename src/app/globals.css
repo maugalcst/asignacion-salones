@@ -1229,6 +1229,20 @@ tbody tr:hover {
     font-weight: 700;
 }
 
+.subject-qty {
+    border-radius: 8px;
+    padding: 4px 10px;
+    background: #fff7e0;
+    color: #92610a;
+    font-size: 12px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.request-form-grid-3 {
+    grid-template-columns: repeat(4, 1fr);
+}
+
 .request-form-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -1342,6 +1356,7 @@ tbody tr:hover {
 @media (max-width: 860px) {
 
     .request-form-grid,
+    .request-form-grid-3,
     .request-preview div {
         grid-template-columns: 1fr;
     }

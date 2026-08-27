@@ -8,9 +8,8 @@ import {
     ArrowUp,
     ArrowUpDown,
     Building2,
-    CalendarDays,
+    Check,
     Plus,
-    Trash2,
     X
 } from "lucide-react";
 import { requestGroupClassroomAction } from "@/app/actions";
@@ -54,6 +53,7 @@ type Subject = {
     name: string;
     type: string;
     semester: number;
+    cantidad: number;
     careers: Career[];
     groupSubjects: {
         id: number;
@@ -82,6 +82,11 @@ type Classroom = {
     floor: number;
     number: string;
     capacity: number;
+    type: string;
+    unavailable: {
+        dayOfWeek: string;
+        schoolHourId: number;
+    }[];
 };
 
 type SchoolHour = {
@@ -89,11 +94,7 @@ type SchoolHour = {
     code: string;
     startTime: string;
     endTime: string;
-};
-
-type DayOption = {
-    value: string;
-    label: string;
+    shift: string;
 };
 
 type ActionResult = {
@@ -102,21 +103,6 @@ type ActionResult = {
     message?: string;
 };
 
-type ScheduleItem = {
-    dayOfWeek: string;
-    schoolHourId: string;
-};
-
-type RequestForm = {
-    subjectId: number;
-    groupCode: string;
-    classroomId: string;
-    building: string;
-    floor: string;
-    dayOfWeek: string;
-    schoolHourId: string;
-    schedules: ScheduleItem[];
-};
 type BusyRequest = {
     classroomId: number;
     schedules: {
@@ -124,23 +110,37 @@ type BusyRequest = {
         schoolHourId: number;
     }[];
 };
-const emptyForm = {
-    subjectId: 0,
-    groupCode: "",
-    classroomId: "",
-    building: "",
-    floor: "",
-    dayOfWeek: "",
-    schoolHourId: "",
-    schedules: []
+
+type DayPattern = {
+    label: string;
+    days: string[];
 };
-const dayLabel: Record<string, string> = {
-    MONDAY: "Lunes",
-    TUESDAY: "Martes",
-    WEDNESDAY: "Miércoles",
-    THURSDAY: "Jueves",
-    FRIDAY: "Viernes",
-    SATURDAY: "Sábado"
+
+type SelectedSlot = {
+    classroomId: number;
+    hourId: number;
+    pattern: DayPattern;
+};
+
+const SALON_DAY_PATTERNS: DayPattern[] = [
+    { label: "Lun-Mie-Vie", days: ["MONDAY", "WEDNESDAY", "FRIDAY"] },
+    { label: "Martes", days: ["TUESDAY"] },
+    { label: "Jueves", days: ["THURSDAY"] }
+];
+
+const LAB_DAY_PATTERNS: DayPattern[] = [
+    { label: "Lunes", days: ["MONDAY"] },
+    { label: "Martes", days: ["TUESDAY"] },
+    { label: "Miércoles", days: ["WEDNESDAY"] },
+    { label: "Jueves", days: ["THURSDAY"] },
+    { label: "Viernes", days: ["FRIDAY"] },
+    { label: "Sábado", days: ["SATURDAY"] }
+];
+
+const shiftLabel: Record<string, string> = {
+    MATUTINO: "Matutino",
+    VESPERTINO: "Vespertino",
+    NOCTURNO: "Nocturno"
 };
 
 function requestStatusLabel(status: string) {
@@ -206,14 +206,16 @@ export function PendingSubjectsManager({
     groups,
     classrooms,
     schoolHours,
-    days,
+    buildings,
+    shifts,
     busyRequests
 }: {
     subjects: Subject[];
     groups: Group[];
     classrooms: Classroom[];
     schoolHours: SchoolHour[];
-    days: DayOption[];
+    buildings: string[];
+    shifts: string[];
     busyRequests: BusyRequest[];
 }) {
     const [search, setSearch] = useState("");
@@ -230,7 +232,13 @@ export function PendingSubjectsManager({
         if (sortKey !== column) return <ArrowUpDown size={12} />;
         return sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />;
     };
-    const [form, setForm] = useState<RequestForm>(emptyForm);
+
+    const [groupCode, setGroupCode] = useState("");
+    const [pattern, setPattern] = useState<DayPattern | null>(null);
+    const [building, setBuilding] = useState("");
+    const [shift, setShift] = useState("");
+    const [selectedSlots, setSelectedSlots] = useState<SelectedSlot[]>([]);
+
     const [notice, setNotice] = useState<{
         type: "success" | "error";
         text: string;
@@ -273,81 +281,78 @@ export function PendingSubjectsManager({
         });
     }, [rows, sortKey, sortDir]);
 
-    const availableGroups = useMemo(() => {
+    const patternOptions = useMemo(() => {
+        if (!selectedSubject) return [];
+        return selectedSubject.type === "Laboratorio" ? LAB_DAY_PATTERNS : SALON_DAY_PATTERNS;
+    }, [selectedSubject]);
+
+    const groupOptions = useMemo(() => {
         if (!selectedSubject) return [];
         return groups.filter((group) => group.semester === selectedSubject.semester);
     }, [groups, selectedSubject]);
 
-    const selectedClassroom = useMemo(() => {
-        return classrooms.find((classroom) => String(classroom.id) === form.classroomId);
-    }, [classrooms, form.classroomId]);
-
     const openRequestModal = (subject: Subject) => {
         setNotice(null);
         setSelectedSubject(subject);
-        setForm({
-            ...emptyForm,
-            subjectId: subject.id,
-        });
+        setGroupCode("");
+        setPattern(null);
+        setBuilding("");
+        setShift("");
+        setSelectedSlots([]);
     };
 
     const closeModal = () => {
         if (pending) return;
         setSelectedSubject(null);
-        setForm(emptyForm);
+        setGroupCode("");
+        setPattern(null);
+        setBuilding("");
+        setShift("");
+        setSelectedSlots([]);
         setNotice(null);
     };
 
-    const addSchedule = () => {
-        if (!form.dayOfWeek || !form.schoolHourId) {
-            setNotice({
-                type: "error",
-                text: "Selecciona día y hora escolar antes de agregar el horario."
-            });
-            return;
-        }
-
-        const alreadyExists = form.schedules.some(
-            (item) =>
-                item.dayOfWeek === form.dayOfWeek &&
-                item.schoolHourId === form.schoolHourId
+    const isSelected = (classroomId: number, hourId: number) =>
+        selectedSlots.some(
+            (slot) => slot.classroomId === classroomId && slot.hourId === hourId
         );
 
-        if (alreadyExists) {
-            setNotice({
-                type: "error",
-                text: "Ese horario ya fue agregado."
-            });
-            return;
-        }
+    const toggleSlot = (classroomId: number, hourId: number) => {
+        if (!pattern) return;
+
+        setSelectedSlots((current) => {
+            const existing = current.some(
+                (slot) => slot.classroomId === classroomId && slot.hourId === hourId
+            );
+
+            if (existing) {
+                return current.filter(
+                    (slot) =>
+                        !(slot.classroomId === classroomId && slot.hourId === hourId)
+                );
+            }
+
+            return [
+                ...current,
+                {
+                    classroomId,
+                    hourId,
+                    pattern
+                }
+            ];
+        });
 
         setNotice(null);
-
-        setForm((current) => ({
-            ...current,
-            schedules: [
-                ...current.schedules,
-                {
-                    dayOfWeek: current.dayOfWeek,
-                    schoolHourId: current.schoolHourId
-                }
-            ],
-            dayOfWeek: "",
-            schoolHourId: ""
-        }));
     };
 
-    const removeSchedule = (index: number) => {
-        setForm((current) => ({
-            ...current,
-            schedules: current.schedules.filter((_, itemIndex) => itemIndex !== index)
-        }));
+    const removeSlot = (index: number) => {
+        setSelectedSlots((current) => current.filter((_, itemIndex) => itemIndex !== index));
     };
 
     const submitRequest = () => {
         setNotice(null);
 
-        if (!form.groupCode) {
+        if (!groupCode) {
             setNotice({
                 type: "error",
                 text: "Selecciona un grupo."
@@ -355,47 +360,60 @@ export function PendingSubjectsManager({
             return;
         }
 
-        if (!form.classroomId) {
+        if (selectedSlots.length === 0) {
             setNotice({
                 type: "error",
-                text: "Selecciona un salón."
+                text: "Asigna al menos un espacio antes de enviar la solicitud."
             });
             return;
         }
 
-        const validSchedules = form.schedules.filter(
-            (schedule) => schedule.dayOfWeek && schedule.schoolHourId
-        );
+        const byClassroom = new Map<number, SelectedSlot[]>();
 
-        if (validSchedules.length === 0) {
-            setNotice({
-                type: "error",
-                text: "Agrega al menos un horario antes de enviar la solicitud."
-            });
-            return;
+        for (const slot of selectedSlots) {
+            const list = byClassroom.get(slot.classroomId) ?? [];
+            list.push(slot);
+            byClassroom.set(slot.classroomId, list);
         }
 
         startTransition(async () => {
-            const formData = new FormData();
-            formData.set("subjectId", String(form.subjectId));
-            formData.set("groupCode", form.groupCode.trim().toUpperCase());
-            formData.set("classroomId", form.classroomId);
-            formData.set("schedules", JSON.stringify(validSchedules));
-            const result = (await requestGroupClassroomAction(formData)) as
-                | ActionResult
-                | undefined;
+            let firstError: string | undefined;
 
-            if (!result || !result.ok) {
+            for (const [classroomId, slots] of byClassroom.entries()) {
+                const schedules = slots.flatMap((slot) =>
+                    slot.pattern.days.map((day) => ({
+                        dayOfWeek: day,
+                        schoolHourId: slot.hourId
+                    }))
+                );
+
+                const formData = new FormData();
+                formData.set("subjectId", String(selectedSubject!.id));
+                formData.set("groupCode", groupCode.trim().toUpperCase());
+                formData.set("classroomId", String(classroomId));
+                formData.set("schedules", JSON.stringify(schedules));
+
+                const result = (await requestGroupClassroomAction(formData)) as
+                    | ActionResult
+                    | undefined;
+
+                if (!result || !result.ok) {
+                    firstError = result?.error || "No se pudo enviar la solicitud.";
+                    break;
+                }
+            }
+
+            if (firstError) {
                 setNotice({
                     type: "error",
-                    text: result?.error || "No se pudo enviar la solicitud."
+                    text: firstError
                 });
                 return;
             }
 
             setNotice({
                 type: "success",
-                text: result.message || "Solicitud enviada correctamente."
+                text: "Solicitud enviada correctamente."
             });
 
             setTimeout(() => {
@@ -403,31 +421,47 @@ export function PendingSubjectsManager({
             }, 700);
         });
     };
-    const availableSchoolHours = useMemo(() => {
-        if (!form.classroomId || !form.dayOfWeek) return schoolHours;
 
-        const busyHourIds = new Set(
-            busyRequests
-                .filter((request) => String(request.classroomId) === form.classroomId)
-                .flatMap((request) =>
-                    request.schedules
-                        .filter((schedule) => schedule.dayOfWeek === form.dayOfWeek)
-                        .map((schedule) => String(schedule.schoolHourId))
-                )
-        );
+    const resultRows = useMemo(() => {
+        if (!selectedSubject || !pattern || !building || !shift || !groupCode) return [];
 
-        const selectedHourIds = new Set(
-            form.schedules
-                .filter((schedule) => schedule.dayOfWeek === form.dayOfWeek)
-                .map((schedule) => schedule.schoolHourId)
-        );
+        const isLab = selectedSubject.type === "Laboratorio";
+        const rows = [];
 
-        return schoolHours.filter(
-            (hour) =>
-                !busyHourIds.has(String(hour.id)) &&
-                !selectedHourIds.has(String(hour.id))
-        );
-    }, [schoolHours, busyRequests, form.classroomId, form.dayOfWeek, form.schedules]);
+        for (const classroom of classrooms) {
+            if (classroom.building !== building) continue;
+            if (isLab ? classroom.type !== "Laboratorio" : classroom.type !== "Aula") continue;
+
+            for (const hour of schoolHours) {
+                if (hour.shift !== shift) continue;
+
+                const busy = busyRequests.some(
+                    (request) =>
+                        String(request.classroomId) === String(classroom.id) &&
+                        request.schedules.some(
+                            (schedule) =>
+                                pattern.days.includes(schedule.dayOfWeek) &&
+                                String(schedule.schoolHourId) === String(hour.id)
+                        )
+                );
+
+                const blocked = classroom.unavailable.some(
+                    (slot) =>
+                        pattern.days.includes(slot.dayOfWeek) &&
+                        String(slot.schoolHourId) === String(hour.id)
+                );
+
+                if (busy || blocked) continue;
+
+                rows.push({ classroom, hour });
+            }
+        }
+
+        return rows;
+    }, [classrooms, schoolHours, busyRequests, selectedSubject, pattern, building, shift, groupCode]);
+
+    const subjectTypeLabel = selectedSubject?.type === "Laboratorio" ? "Laboratorio" : "Salón";
+
     return (
         <div className="content-wrap">
             {notice && !selectedSubject ? (
@@ -581,7 +615,7 @@ export function PendingSubjectsManager({
 
                             <div>
                                 <h2>Nueva solicitud de salón</h2>
-                                <p>Capture la información del salón y sus horarios solicitados</p>
+                                <p>Selecciona los espacios disponibles que necesitas</p>
                             </div>
                         </div>
 
@@ -596,46 +630,41 @@ export function PendingSubjectsManager({
                         <div className="request-subject-summary">
                             <strong>{selectedSubject.code}</strong>
                             <span>{selectedSubject.name}</span>
-                            <em>{selectedSubject.type}</em>
+                            <em>Tipo: {subjectTypeLabel}</em>
+                            <b className="subject-qty">{selectedSubject.cantidad} alumnos</b>
                         </div>
 
                         <div className="request-form-grid request-form-grid-3">
                             <div className="form-field">
                                 <label>Grupo</label>
-                                <input
-                                    type="text"
-                                    value={form.groupCode}
-                                    placeholder="Ej. 1, 2, 301, 4A"
-                                    onChange={(event) =>
-                                        setForm({
-                                            ...form,
-                                            groupCode: event.target.value.toUpperCase()
-                                        })
-                                    }
-                                />
+                                <select
+                                    value={groupCode}
+                                    onChange={(event) => setGroupCode(event.target.value)}
+                                >
+                                    <option value="">Seleccione grupo</option>
+                                    {groupOptions.map((group) => (
+                                        <option key={group.id} value={group.code}>
+                                            {group.code}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
 
                             <div className="form-field">
-                                <label>Salón</label>
+                                <label>Días</label>
                                 <select
-                                    value={form.classroomId}
+                                    value={pattern?.label || ""}
                                     onChange={(event) => {
-                                        const classroom = classrooms.find(
-                                            (item) => String(item.id) === event.target.value
+                                        const next = patternOptions.find(
+                                            (option) => option.label === event.target.value
                                         );
-
-                                        setForm({
-                                            ...form,
-                                            classroomId: event.target.value,
-                                            building: classroom?.building || "",
-                                            floor: classroom ? String(classroom.floor) : "",
-                                        });
+                                        setPattern(next || null);
                                     }}
                                 >
-                                    <option value="">Seleccione salón</option>
-                                    {classrooms.map((classroom) => (
-                                        <option key={classroom.id} value={classroom.id}>
-                                            {classroom.number} · Capacidad {classroom.capacity}
+                                    <option value="">Patrón de días</option>
+                                    {patternOptions.map((option) => (
+                                        <option key={option.label} value={option.label}>
+                                            {option.label}
                                         </option>
                                     ))}
                                 </select>
@@ -643,47 +672,29 @@ export function PendingSubjectsManager({
 
                             <div className="form-field">
                                 <label>Edificio</label>
-                                <input
-                                    value={form.building ? `Edificio ${form.building}` : ""}
-                                    placeholder="Automático"
-                                    disabled
-                                />
-                            </div>
-
-                            <div className="form-field">
-                                <label>Piso</label>
-                                <input value={form.floor || ""} placeholder="Automático" disabled />
-                            </div>
-
-                            <div className="form-field">
-                                <label>Día</label>
                                 <select
-                                    value={form.dayOfWeek}
-                                    onChange={(event) =>
-                                        setForm({ ...form, dayOfWeek: event.target.value })
-                                    }
+                                    value={building}
+                                    onChange={(event) => setBuilding(event.target.value)}
                                 >
-                                    <option value="">Día</option>
-                                    {days.map((day) => (
-                                        <option key={day.value} value={day.value}>
-                                            {day.label}
+                                    <option value="">Todos</option>
+                                    {buildings.map((item) => (
+                                        <option key={item} value={item}>
+                                            {item}
                                         </option>
                                     ))}
                                 </select>
                             </div>
 
-                            <div className="form-field request-hour-field">
-                                <label>Hora escolar</label>
+                            <div className="form-field">
+                                <label>Turno</label>
                                 <select
-                                    value={form.schoolHourId}
-                                    onChange={(event) =>
-                                        setForm({ ...form, schoolHourId: event.target.value })
-                                    }
+                                    value={shift}
+                                    onChange={(event) => setShift(event.target.value)}
                                 >
-                                    <option value="">Hora</option>
-                                    {availableSchoolHours.map((hour) => (
-                                        <option key={hour.id} value={hour.id}>
-                                            {hour.code} · {hour.startTime} - {hour.endTime}
+                                    <option value="">Todos</option>
+                                    {shifts.map((item) => (
+                                        <option key={item} value={item}>
+                                            {shiftLabel[item] || item}
                                         </option>
                                     ))}
                                 </select>
@@ -693,61 +704,106 @@ export function PendingSubjectsManager({
                         <div className="request-divider" />
 
                         <div className="added-schedules-header">
-                            <h3>Horarios agregados</h3>
-
-                            <button
-                                type="button"
-                                className="add-schedule-button"
-                                onClick={addSchedule}
-                            >
-                                <Plus size={16} />
-                                Agregar otro horario
-                            </button>
+                            <h3>Espacios disponibles</h3>
                         </div>
 
                         <div className="added-schedules-table">
                             <table>
                                 <thead>
                                     <tr>
-                                        <th>Día</th>
-                                        <th>Hora inicio</th>
-                                        <th>Hora fin</th>
-                                        <th>Clave</th>
+                                        <th>Salón</th>
+                                        <th>Hora</th>
+                                        <th>Grupo</th>
+                                        <th>Asign</th>
+                                    </tr>
+                                </thead>
+
+                                <tbody>
+                                    {resultRows.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={4} className="empty-row">
+                                                Ajusta los filtros para ver espacios disponibles.
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        resultRows.map(({ classroom, hour }) => {
+                                            const selected = isSelected(classroom.id, hour.id);
+
+                                            return (
+                                                <tr key={`${classroom.id}-${hour.id}`}>
+                                                    <td>{classroom.number}</td>
+                                                    <td>
+                                                        {hour.code} · {hour.startTime} - {hour.endTime}
+                                                    </td>
+                                                    <td>{groupCode}</td>
+                                                    <td>
+                                                        <div className="row-actions">
+                                                            <button
+                                                                type="button"
+                                                                className={selected ? "reject-icon" : "approve-icon"}
+                                                                onClick={() => toggleSlot(classroom.id, hour.id)}
+                                                                aria-label={
+                                                                    selected ? "Quitar espacio" : "Asignar espacio"
+                                                                }
+                                                            >
+                                                                {selected ? <X size={16} /> : <Check size={16} />}
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div className="request-divider" />
+
+                        <div className="added-schedules-header">
+                            <h3>Espacios asignados ({selectedSlots.length})</h3>
+                        </div>
+
+                        <div className="added-schedules-table">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Salón</th>
+                                        <th>Horario</th>
+                                        <th>Grupo</th>
                                         <th>Acción</th>
                                     </tr>
                                 </thead>
 
                                 <tbody>
-                                    {form.schedules.length === 0 ? (
+                                    {selectedSlots.length === 0 ? (
                                         <tr>
-                                            <td colSpan={5} className="empty-row">
-                                                Aún no has agregado horarios.
+                                            <td colSpan={4} className="empty-row">
+                                                Aún no has asignado espacios.
                                             </td>
                                         </tr>
                                     ) : (
-                                        form.schedules.map((schedule, index) => {
+                                        selectedSlots.map((slot, index) => {
+                                            const classroom = classrooms.find(
+                                                (item) => item.id === slot.classroomId
+                                            );
                                             const hour = schoolHours.find(
-                                                (item) => String(item.id) === String(schedule.schoolHourId)
+                                                (item) => item.id === slot.hourId
                                             );
 
                                             return (
-                                                <tr key={`${schedule.dayOfWeek}-${schedule.schoolHourId}-${index}`}>
+                                                <tr key={`${slot.classroomId}-${slot.hourId}-${index}`}>
+                                                    <td>{classroom?.number ?? slot.classroomId}</td>
                                                     <td>
-                                                        {days.find((day) => day.value === schedule.dayOfWeek)?.label ||
-                                                            schedule.dayOfWeek}
+                                                        {slot.pattern.label} · {hour?.code || `Hora ${slot.hourId}`}
+                                                        {hour ? ` (${hour.startTime} - ${hour.endTime})` : ""}
                                                     </td>
-
-                                                    <td>{hour?.code || `Hora ${schedule.schoolHourId}`}</td>
-
-                                                    <td>
-                                                        {hour ? `${hour.startTime} - ${hour.endTime}` : "Horario no encontrado"}
-                                                    </td>
-
+                                                    <td>{groupCode}</td>
                                                     <td>
                                                         <button
                                                             type="button"
                                                             className="schedule-delete"
-                                                            onClick={() => removeSchedule(index)}
+                                                            onClick={() => removeSlot(index)}
                                                         >
                                                             Eliminar
                                                         </button>

@@ -1,17 +1,7 @@
-import { WeekDay } from "@prisma/client";
 import { DashboardHeader } from "@/components/dashboard-header";
 import { PendingSubjectsManager } from "@/components/pending-subjects-manager";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-
-const dayLabels: Record<WeekDay, string> = {
-  MONDAY: "Lunes",
-  TUESDAY: "Martes",
-  WEDNESDAY: "Miércoles",
-  THURSDAY: "Jueves",
-  FRIDAY: "Viernes",
-  SATURDAY: "Sábado"
-};
 
 export default async function PendingSubjectsPage() {
   const user = await requireUser();
@@ -108,6 +98,16 @@ export default async function PendingSubjectsPage() {
         where: {
           status: "AVAILABLE"
         },
+        include: {
+          unavailable: {
+            where: {
+              active: true
+            },
+            include: {
+              schoolHour: true
+            }
+          }
+        },
         orderBy: [
           {
             building: "asc"
@@ -151,13 +151,8 @@ export default async function PendingSubjectsPage() {
       })
     ]);
 
-  const days = Object.entries(dayLabels).map(([value, label]) => ({
-    value: value as WeekDay,
-    label
-  }));
-
   const transformedSubjects = subjects.map(s => ({
-    id: s.id, code: s.code, name: s.name, type: s.type, semester: s.semester, careers: s.careers,
+    id: s.id, code: s.code, name: s.name, type: s.type, semester: s.semester, cantidad: s.cantidad, careers: s.careers,
     groupSubjects: s.groupSubjects.map(gs => ({
       id: gs.id,
       group: gs.group,
@@ -178,6 +173,19 @@ export default async function PendingSubjectsPage() {
     }))
   }));
 
+  const transformedClassrooms = classrooms.map(c => ({
+    id: c.id,
+    building: c.building,
+    floor: c.floor,
+    number: c.number,
+    capacity: c.capacity,
+    type: c.type,
+    unavailable: c.unavailable.map(u => ({
+      dayOfWeek: u.dayOfWeek,
+      schoolHourId: u.schoolHourId
+    }))
+  }));
+
   const transformedBusy = busyRequests.map(r => ({
     classroomId: r.classroom!.id,
     schedules: r.schedules.map(sch => ({
@@ -185,6 +193,9 @@ export default async function PendingSubjectsPage() {
       schoolHourId: sch.schoolHourId
     }))
   }));
+
+  const buildings = Array.from(new Set(classrooms.map(c => c.building))).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const shifts = Array.from(new Set(schoolHours.map(h => h.shift)));
 
   return (
     <>
@@ -196,9 +207,10 @@ export default async function PendingSubjectsPage() {
       <PendingSubjectsManager
         subjects={transformedSubjects}
         groups={groups}
-        classrooms={classrooms}
+        classrooms={transformedClassrooms}
         schoolHours={schoolHours}
-        days={days}
+        buildings={buildings}
+        shifts={shifts}
         busyRequests={transformedBusy}
       />
     </>
