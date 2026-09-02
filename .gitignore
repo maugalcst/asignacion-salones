@@ -1,6 +1,5 @@
 node_modules
 .next
 .env
-prisma/database.db
 prisma/database.db-journal
 *.log

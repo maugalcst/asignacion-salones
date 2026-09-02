@@ -1,15 +1,50 @@
-# FIME · Asignación de Salones
+# FIME · Sistema de Asignación de Salones
 
-Base funcional en Next.js con App Router, TypeScript, Prisma y SQLite. Incluye:
+Sistema web funcional desarrollado con **Next.js 15, TypeScript, Prisma y SQLite** para administrar grupos, materias, personal, salones, periodos, horarios y solicitudes de asignación de aula.
+
+## Módulos incluidos
 
 - Inicio y cierre de sesión con cookie HTTP-only.
-- Dashboard inspirado en el Figma proporcionado.
-- Resumen de solicitudes pendientes, aprobadas y rechazadas.
-- Aprobación con confirmación.
-- Rechazo con motivo obligatorio.
-- Vista de salones asignados.
-- Catálogos de personal, materias y salones.
-- Datos de demostración y archivo local `prisma/database.db`.
+- Dashboard para administrador y coordinadores.
+- Solicitudes de salón con aprobación y rechazo.
+- Validación de capacidad del salón.
+- Validación de choques de día/hora y salones bloqueados.
+- Administración de carreras.
+- Administración de personal y profesores.
+- Administración de materias.
+- Administración de grupos académicos.
+- Administración de salones y capacidades.
+- Administración de periodos escolares.
+- Catálogo de horas escolares.
+- Bloqueo de salones por mantenimiento o indisponibilidad.
+- Datos reales importados desde `pruebagrupos.txt`.
+- Capacidades de salones tomadas del documento proporcionado.
+
+## Formato de horarios importados
+
+El reporte original usa valores como `M1,1`, `M1,3`, `N4,3`, etc. En el sistema se conserva únicamente la hora escolar principal:
+
+- `M1,1` → `M1`
+- `M1,3` → `M1`
+- `N4,3` → `N4`
+
+Los códigos numéricos de días se muestran con nombres completos:
+
+- `1` → `Lunes`
+- `2` → `Martes`
+- `3` → `Miércoles`
+- `4` → `Jueves`
+- `5` → `Viernes`
+- `6` → `Sábado`
+- `135` → `Lunes, Miércoles, Viernes`
+
+## Datos de referencia
+
+En `data/reference/` se incluyen:
+
+- `pruebagrupos.txt`
+- `salones-capacidad.csv`
+- `SALONES_CAPACIDAD_ORIGINAL.docx`
 
 ## Requisitos
 
@@ -27,29 +62,27 @@ npm run db:seed
 npm run dev
 ```
 
+En Windows PowerShell, puedes copiar el archivo de entorno con:
+
+```powershell
+Copy-Item .env.example .env
+```
+
 Abre `http://localhost:3000`.
 
-### Cuenta de prueba
+## Cuenta de prueba
 
 - Correo: `admin@uanl.edu.mx`
 - Contraseña: `admin123`
 
-## Archivo SQLite
+## Base de datos incluida
 
-Después de ejecutar `npm run db:push`, la base queda en:
-
-```text
-prisma/database.db
-```
-
-No subas ese archivo a un repositorio público si contiene información real.
-
-## Reiniciar datos
+El proyecto incluye `prisma/database.db` con datos precargados. Si deseas reconstruir la base desde los archivos de referencia:
 
 ```bash
 npm run db:reset
 ```
 
-## Notas de producción
+## GitHub
 
-SQLite requiere almacenamiento persistente. En un VPS o servidor local funciona directamente. En plataformas serverless con sistema de archivos efímero, usa un volumen persistente o cambia a una base administrada.
+El ZIP está preparado para subirse a un repositorio. El archivo `.env` no se incluye; usa `.env.example` como plantilla.
