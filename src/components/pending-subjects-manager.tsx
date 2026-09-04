@@ -266,6 +266,7 @@ export function PendingSubjectsManager({
     careerRequests: CareerRequest[];
 }) {
     const [search, setSearch] = useState("");
+    const [page, setPage] = useState(1);
     const [showRequests, setShowRequests] = useState(false);
     const [requestStatus, setRequestStatus] = useState("");
     const [requestGroup, setRequestGroup] = useState("");
@@ -332,6 +333,11 @@ export function PendingSubjectsManager({
             return al < bl ? (sortDir === "asc" ? -1 : 1) : al > bl ? (sortDir === "asc" ? 1 : -1) : 0;
         });
     }, [rows, sortKey, sortDir]);
+
+    const PAGE_SIZE = 10;
+    const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+    const safePage = Math.min(page, pageCount);
+    const visible = sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
     const requestGroupOptions = useMemo(
         () =>
@@ -618,7 +624,10 @@ export function PendingSubjectsManager({
                             <input
                                 placeholder="Buscar materia, clave, carrera o tipo..."
                                 value={search}
-                                onChange={(event) => setSearch(event.target.value)}
+                                onChange={(event) => {
+                                    setSearch(event.target.value);
+                                    setPage(1);
+                                }}
                             />
                         )}
 
@@ -661,14 +670,14 @@ export function PendingSubjectsManager({
                         </thead>
 
                         <tbody>
-                            {rows.length === 0 ? (
+                            {visible.length === 0 ? (
                                 <tr>
                                     <td colSpan={7} className="empty-row">
                                         No se encontraron materias para tu carrera.
                                     </td>
                                 </tr>
                             ) : (
-                                sorted.map((subject) => {
+                                visible.map((subject) => {
                                     const requests = subject.groupSubjects.flatMap((groupSubject) =>
                                         groupSubject.requests.map((request) => ({
                                             ...request,
@@ -826,10 +835,25 @@ export function PendingSubjectsManager({
                 ) : null}
 
                 <div className="pagination" hidden={showRequests}>
-                    <button type="button">
+                    <button
+                        type="button"
+                        disabled={safePage <= 1}
+                        onClick={() => setPage((current) => Math.max(1, current - 1))}
+                        aria-label="Página anterior"
+                    >
                         <ArrowLeft size={18} />
                     </button>
-                    <button type="button">
+
+                    <span className="pagination-label">
+                        Página {safePage} de {pageCount}
+                    </span>
+
+                    <button
+                        type="button"
+                        disabled={safePage >= pageCount}
+                        onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+                        aria-label="Página siguiente"
+                    >
                         <ArrowRight size={18} />
                     </button>
                 </div>
