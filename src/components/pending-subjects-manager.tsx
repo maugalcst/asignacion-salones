@@ -9,6 +9,7 @@ import {
     ArrowUpDown,
     Building2,
     Check,
+    Info,
     Plus,
     X
 } from "lucide-react";
@@ -26,6 +27,7 @@ type SubjectRequest = {
     id: number;
     dayOfWeek: string;
     status: RequestStatus;
+    rejectionReason: string | null;
     classroom: {
         building: string;
         floor: number;
@@ -122,6 +124,32 @@ type SelectedSlot = {
     pattern: DayPattern;
 };
 
+type CareerRequest = {
+    id: number;
+    status: RequestStatus;
+    rejectionReason: string | null;
+    requestedAt: string | Date;
+    groupCode: string | null;
+    subject: {
+        code: string;
+        name: string;
+        type: string;
+    };
+    classroom: {
+        number: string;
+        building: string;
+        floor: number;
+    };
+    schedules: RequestSchedule[];
+};
+
+type RejectionView = {
+    groupCode: string;
+    classroom: string;
+    schedule: string;
+    reason: string;
+};
+
 const SALON_DAY_PATTERNS: DayPattern[] = [
     { label: "Lun-Mie-Vie", days: ["MONDAY", "WEDNESDAY", "FRIDAY"] },
     { label: "Martes", days: ["TUESDAY"] },
@@ -158,6 +186,17 @@ const shortDayLabel: Record<string, string> = {
     SATURDAY: "S"
 };
 
+// Los horarios llegan ordenados por hora escolar, no por día, así que los
+// días de una misma hora se reordenan aquí para leerse como "LMV" y no "VLM".
+const dayOrder: Record<string, number> = {
+    MONDAY: 1,
+    TUESDAY: 2,
+    WEDNESDAY: 3,
+    THURSDAY: 4,
+    FRIDAY: 5,
+    SATURDAY: 6
+};
+
 type RequestSchedule = {
     dayOfWeek: string;
     schoolHourId: number;
@@ -191,14 +230,20 @@ function formatSchedules(schedules: RequestSchedule[]) {
             });
         }
 
-        grouped
-            .get(hourCode)
-            ?.days.push(shortDayLabel[schedule.dayOfWeek] || schedule.dayOfWeek);
+        grouped.get(hourCode)?.days.push(schedule.dayOfWeek);
     }
 
     return Array.from(grouped.entries())
         .sort(([, a], [, b]) => a.sortOrder - b.sortOrder)
-        .map(([hourCode, data]) => `${data.days.join("")} · ${hourCode}`)
+        .map(([hourCode, data]) => {
+            const days = data.days
+                .slice()
+                .sort((a, b) => (dayOrder[a] ?? 99) - (dayOrder[b] ?? 99))
+                .map((day) => shortDayLabel[day] || day)
+                .join("");
+
+            return `${days} · ${hourCode}`;
+        })
         .join(", ");
 }
 export function PendingSubjectsManager({
@@ -208,7 +253,8 @@ export function PendingSubjectsManager({
     schoolHours,
     buildings,
     shifts,
-    busyRequests
+    busyRequests,
+    careerRequests
 }: {
     subjects: Subject[];
     groups: Group[];
@@ -217,11 +263,18 @@ export function PendingSubjectsManager({
     buildings: string[];
     shifts: string[];
     busyRequests: BusyRequest[];
+    careerRequests: CareerRequest[];
 }) {
     const [search, setSearch] = useState("");
+    const [page, setPage] = useState(1);
+    const [showRequests, setShowRequests] = useState(false);
+    const [requestStatus, setRequestStatus] = useState("");
+    const [requestGroup, setRequestGroup] = useState("");
+    const [requestBuilding, setRequestBuilding] = useState("");
     const [sortKey, setSortKey] = useState<string | null>(null);
     const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
     const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
+    const [rejectionView, setRejectionView] = useState<RejectionView | null>(null);
 
     const handleSort = (key: string) => {
         if (sortKey !== key) { setSortKey(key); setSortDir("asc"); }
@@ -281,15 +334,96 @@ export function PendingSubjectsManager({
         });
     }, [rows, sortKey, sortDir]);
 
+    const PAGE_SIZE = 10;
+    const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+    const safePage = Math.min(page, pageCount);
+    const visible = sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+    const requestGroupOptions = useMemo(
+        () =>
+            Array.from(
+                new Set(
+                    careerRequests
+                        .map((request) => request.groupCode)
+                        .filter((code): code is string => Boolean(code))
+                )
+            ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+        [careerRequests]
+    );
+
+    const requestBuildingOptions = useMemo(
+        () =>
+            Array.from(
+                new Set(careerRequests.map((request) => request.classroom.building))
+            ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+        [careerRequests]
+    );
+
+    const filteredRequests = useMemo(
+        () =>
+            careerRequests.filter((request) => {
+                if (requestStatus && request.status !== requestStatus) return false;
+                if (requestGroup && request.groupCode !== requestGroup) return false;
+                if (requestBuilding && request.classroom.building !== requestBuilding) return false;
+                return true;
+            }),
+        [careerRequests, requestStatus, requestGroup, requestBuilding]
+    );
+
+    const clearRequestFilters = () => {
+        setRequestStatus("");
+        setRequestGroup("");
+        setRequestBuilding("");
+    };
+
     const patternOptions = useMemo(() => {
         if (!selectedSubject) return [];
         return selectedSubject.type === "Laboratorio" ? LAB_DAY_PATTERNS : SALON_DAY_PATTERNS;
     }, [selectedSubject]);
 
+    // Varias filas de AcademicGroup comparten código (una por materia), así que
+    // la lista se deduplica: 63 grupos reales en vez de 847 opciones repetidas.
+    // Cuando el grupo ya cursa esta materia se conoce su inscripción real.
     const groupOptions = useMemo(() => {
         if (!selectedSubject) return [];
-        return groups.filter((group) => group.semester === selectedSubject.semester);
+
+        const byCode = new Map<string, number | null>();
+
+        for (const groupSubject of selectedSubject.groupSubjects) {
+            byCode.set(groupSubject.group.code, groupSubject.group.students);
+        }
+
+        for (const group of groups) {
+            if (group.semester === selectedSubject.semester && !byCode.has(group.code)) {
+                byCode.set(group.code, null);
+            }
+        }
+
+        return Array.from(byCode.entries())
+            .map(([code, students]) => ({ code, students }))
+            .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
     }, [groups, selectedSubject]);
+
+    // Se separan los dos casos: los grupos que ya cursan la materia (con su
+    // inscripción real) y los demás códigos de la carrera, que al elegirlos
+    // crean una sección nueva de esta materia.
+    const enrolledGroups = useMemo(
+        () =>
+            groupOptions.filter(
+                (group): group is { code: string; students: number } => group.students !== null
+            ),
+        [groupOptions]
+    );
+
+    const otherGroups = useMemo(
+        () => groupOptions.filter((group) => group.students === null),
+        [groupOptions]
+    );
+
+    const selectedGroupStudents = useMemo(() => {
+        if (!groupCode) return null;
+        return groupOptions.find((option) => option.code === groupCode)?.students ?? null;
+    }, [groupOptions, groupCode]);
 
     const openRequestModal = (subject: Subject) => {
         setNotice(null);
@@ -480,20 +614,81 @@ export function PendingSubjectsManager({
             <section className="table-card coordinator-card">
                 <div className="table-heading">
                     <div>
-                        <h2>Materias por coordinar</h2>
-                        <p>Selecciona una materia y solicita salón por día y hora escolar.</p>
+                        <h2>{showRequests ? "Solicitudes realizadas" : "Materias por coordinar"}</h2>
+                        <p>
+                            {showRequests
+                                ? `${filteredRequests.length} de ${careerRequests.length} solicitudes de tu carrera.`
+                                : "Selecciona una materia y solicita salón por día y hora escolar."}
+                        </p>
                     </div>
 
                     <div className="table-filters">
-                        <input
-                            placeholder="Buscar materia, clave, carrera o tipo..."
-                            value={search}
-                            onChange={(event) => setSearch(event.target.value)}
-                        />
+                        {showRequests ? (
+                            <>
+                                <select
+                                    value={requestStatus}
+                                    onChange={(event) => setRequestStatus(event.target.value)}
+                                >
+                                    <option value="">Estado</option>
+                                    <option value="PENDING">En revisión</option>
+                                    <option value="APPROVED">Aprobada</option>
+                                    <option value="REJECTED">Rechazada</option>
+                                </select>
+
+                                <select
+                                    value={requestGroup}
+                                    onChange={(event) => setRequestGroup(event.target.value)}
+                                >
+                                    <option value="">Grupo</option>
+                                    {requestGroupOptions.map((code) => (
+                                        <option key={code} value={code}>
+                                            {code}
+                                        </option>
+                                    ))}
+                                </select>
+
+                                <select
+                                    value={requestBuilding}
+                                    onChange={(event) => setRequestBuilding(event.target.value)}
+                                >
+                                    <option value="">Edificio</option>
+                                    {requestBuildingOptions.map((item) => (
+                                        <option key={item} value={item}>
+                                            Edificio {item}
+                                        </option>
+                                    ))}
+                                </select>
+                            </>
+                        ) : (
+                            <input
+                                placeholder="Buscar materia, clave, carrera o tipo..."
+                                value={search}
+                                onChange={(event) => {
+                                    setSearch(event.target.value);
+                                    setPage(1);
+                                }}
+                            />
+                        )}
+
+                        <button
+                            type="button"
+                            className={`view-switch ${showRequests ? "on" : ""}`}
+                            role="switch"
+                            aria-checked={showRequests}
+                            onClick={() => {
+                                setShowRequests((current) => !current);
+                                clearRequestFilters();
+                            }}
+                        >
+                            <span className="view-switch-track">
+                                <span className="view-switch-thumb" />
+                            </span>
+                            Ver solicitudes
+                        </button>
                     </div>
                 </div>
 
-                <div className="table-scroll">
+                <div className="table-scroll" hidden={showRequests}>
                     <table>
                         <thead>
                             <tr>
@@ -514,14 +709,14 @@ export function PendingSubjectsManager({
                         </thead>
 
                         <tbody>
-                            {rows.length === 0 ? (
+                            {visible.length === 0 ? (
                                 <tr>
                                     <td colSpan={7} className="empty-row">
                                         No se encontraron materias para tu carrera.
                                     </td>
                                 </tr>
                             ) : (
-                                sorted.map((subject) => {
+                                visible.map((subject) => {
                                     const requests = subject.groupSubjects.flatMap((groupSubject) =>
                                         groupSubject.requests.map((request) => ({
                                             ...request,
@@ -549,8 +744,11 @@ export function PendingSubjectsManager({
                                                     {requests.length === 0 ? (
                                                         <span className="muted">Sin horario solicitado</span>
                                                     ) : (
-                                                        requests.map((request) => (
-                                                            <span key={request.id} className="schedule-chip">
+                                                        requests.map((request, index) => (
+                                                            <span
+                                                                key={`${request.id}-${request.dayOfWeek}-${request.schoolHour.code}-${index}`}
+                                                                className="schedule-chip"
+                                                            >
                                                                 Grupo {request.groupCode} ·{" "}
                                                                 {formatSchedules(request.schedules)}·{" "}
                                                                 {request.classroom.number}
@@ -558,6 +756,25 @@ export function PendingSubjectsManager({
                                                                 <b className={`status ${request.status.toLowerCase()}`}>
                                                                     {requestStatusLabel(request.status)}
                                                                 </b>
+
+                                                                {request.status === "REJECTED" && request.rejectionReason ? (
+                                                                    <button
+                                                                        type="button"
+                                                                        className="reason-btn"
+                                                                        title="Ver motivo del rechazo"
+                                                                        aria-label="Ver motivo del rechazo"
+                                                                        onClick={() =>
+                                                                            setRejectionView({
+                                                                                groupCode: request.groupCode,
+                                                                                classroom: request.classroom.number,
+                                                                                schedule: formatSchedules(request.schedules),
+                                                                                reason: request.rejectionReason || ""
+                                                                            })
+                                                                        }
+                                                                    >
+                                                                        <Info size={13} />
+                                                                    </button>
+                                                                ) : null}
                                                             </span>
                                                         ))
                                                     )}
@@ -581,11 +798,101 @@ export function PendingSubjectsManager({
                     </table>
                 </div>
 
-                <div className="pagination">
-                    <button type="button">
+                {showRequests ? (
+                    <div className="table-scroll">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Grupo</th>
+                                    <th>Materia</th>
+                                    <th>Salón</th>
+                                    <th>Horario</th>
+                                    <th>Estado</th>
+                                    <th>Fecha</th>
+                                </tr>
+                            </thead>
+
+                            <tbody>
+                                {filteredRequests.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={6} className="empty-row">
+                                            {careerRequests.length === 0
+                                                ? "Aún no has realizado solicitudes de salón."
+                                                : "Ninguna solicitud coincide con los filtros seleccionados."}
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    filteredRequests.map((request) => (
+                                        <tr key={request.id}>
+                                            <td>{request.groupCode || "—"}</td>
+                                            <td>
+                                                {request.subject.code}
+                                                <br />
+                                                <small className="muted">{request.subject.name}</small>
+                                            </td>
+                                            <td>
+                                                {request.classroom.building}-{request.classroom.number}
+                                            </td>
+                                            <td>{formatSchedules(request.schedules)}</td>
+                                            <td>
+                                                <div className="status-cell">
+                                                    <span className={`status ${request.status.toLowerCase()}`}>
+                                                        {requestStatusLabel(request.status)}
+                                                    </span>
+
+                                                    {request.status === "REJECTED" && request.rejectionReason ? (
+                                                        <button
+                                                            type="button"
+                                                            className="reason-btn"
+                                                            title="Ver motivo del rechazo"
+                                                            aria-label="Ver motivo del rechazo"
+                                                            onClick={() =>
+                                                                setRejectionView({
+                                                                    groupCode: request.groupCode || "—",
+                                                                    classroom: request.classroom.number,
+                                                                    schedule: formatSchedules(request.schedules),
+                                                                    reason: request.rejectionReason || ""
+                                                                })
+                                                            }
+                                                        >
+                                                            <Info size={13} />
+                                                        </button>
+                                                    ) : null}
+                                                </div>
+                                            </td>
+                                            <td>
+                                                {new Intl.DateTimeFormat("es-MX", {
+                                                    dateStyle: "medium"
+                                                }).format(new Date(request.requestedAt))}
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                ) : null}
+
+                <div className="pagination" hidden={showRequests}>
+                    <button
+                        type="button"
+                        disabled={safePage <= 1}
+                        onClick={() => setPage((current) => Math.max(1, current - 1))}
+                        aria-label="Página anterior"
+                    >
                         <ArrowLeft size={18} />
                     </button>
-                    <button type="button">
+
+                    <span className="pagination-label">
+                        Página {safePage} de {pageCount}
+                    </span>
+
+                    <button
+                        type="button"
+                        disabled={safePage >= pageCount}
+                        onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+                        aria-label="Página siguiente"
+                    >
                         <ArrowRight size={18} />
                     </button>
                 </div>
@@ -630,23 +937,44 @@ export function PendingSubjectsManager({
                         <div className="request-subject-summary">
                             <strong>{selectedSubject.code}</strong>
                             <span>{selectedSubject.name}</span>
-                            <em>Tipo: {subjectTypeLabel}</em>
-                            <b className="subject-qty">{selectedSubject.cantidad} alumnos</b>
+                            <em>Requiere: {subjectTypeLabel}</em>
+                            <b className="subject-qty">
+                                {selectedGroupStudents
+                                    ? `${selectedGroupStudents} alumnos`
+                                    : groupCode
+                                        ? "Grupo nuevo"
+                                        : "Selecciona un grupo"}
+                            </b>
                         </div>
 
                         <div className="request-form-grid request-form-grid-3">
                             <div className="form-field">
-                                <label>Grupo</label>
+                                <label>Grupo (sección de la materia)</label>
                                 <select
                                     value={groupCode}
                                     onChange={(event) => setGroupCode(event.target.value)}
                                 >
                                     <option value="">Seleccione grupo</option>
-                                    {groupOptions.map((group) => (
-                                        <option key={group.id} value={group.code}>
-                                            {group.code}
-                                        </option>
-                                    ))}
+
+                                    {enrolledGroups.length > 0 ? (
+                                        <optgroup label="Ya cursan esta materia">
+                                            {enrolledGroups.map((group) => (
+                                                <option key={group.code} value={group.code}>
+                                                    Grupo {group.code} · {group.students} alumnos
+                                                </option>
+                                            ))}
+                                        </optgroup>
+                                    ) : null}
+
+                                    {otherGroups.length > 0 ? (
+                                        <optgroup label="Otros grupos de la carrera (crea sección nueva)">
+                                            {otherGroups.map((group) => (
+                                                <option key={group.code} value={group.code}>
+                                                    Grupo {group.code}
+                                                </option>
+                                            ))}
+                                        </optgroup>
+                                    ) : null}
                                 </select>
                             </div>
 
@@ -712,6 +1040,7 @@ export function PendingSubjectsManager({
                                 <thead>
                                     <tr>
                                         <th>Salón</th>
+                                        <th>Cupo</th>
                                         <th>Hora</th>
                                         <th>Grupo</th>
                                         <th>Asign</th>
@@ -721,17 +1050,29 @@ export function PendingSubjectsManager({
                                 <tbody>
                                     {resultRows.length === 0 ? (
                                         <tr>
-                                            <td colSpan={4} className="empty-row">
+                                            <td colSpan={5} className="empty-row">
                                                 Ajusta los filtros para ver espacios disponibles.
                                             </td>
                                         </tr>
                                     ) : (
                                         resultRows.map(({ classroom, hour }) => {
                                             const selected = isSelected(classroom.id, hour.id);
+                                            const tooSmall =
+                                                selectedGroupStudents !== null &&
+                                                classroom.capacity < selectedGroupStudents;
 
                                             return (
                                                 <tr key={`${classroom.id}-${hour.id}`}>
                                                     <td>{classroom.number}</td>
+                                                    <td className={tooSmall ? "capacity-low" : ""}>
+                                                        {classroom.capacity}
+                                                        {tooSmall ? (
+                                                            <>
+                                                                <br />
+                                                                <small>insuficiente</small>
+                                                            </>
+                                                        ) : null}
+                                                    </td>
                                                     <td>
                                                         {hour.code} · {hour.startTime} - {hour.endTime}
                                                     </td>
@@ -741,6 +1082,11 @@ export function PendingSubjectsManager({
                                                             <button
                                                                 type="button"
                                                                 className={selected ? "reject-icon" : "approve-icon"}
+                                                                title={
+                                                                    tooSmall
+                                                                        ? `Aviso: el salón tiene cupo para ${classroom.capacity} y el grupo es de ${selectedGroupStudents}.`
+                                                                        : undefined
+                                                                }
                                                                 onClick={() => toggleSlot(classroom.id, hour.id)}
                                                                 aria-label={
                                                                     selected ? "Quitar espacio" : "Asignar espacio"
@@ -833,6 +1179,52 @@ export function PendingSubjectsManager({
                                 onClick={submitRequest}
                             >
                                 {pending ? "Enviando..." : "Enviar solicitud"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
+            {rejectionView ? (
+                <div
+                    className="modal-backdrop"
+                    onMouseDown={(event) => {
+                        if (event.target === event.currentTarget) {
+                            setRejectionView(null);
+                        }
+                    }}
+                >
+                    <div
+                        className="modal rejection-modal"
+                        onMouseDown={(event) => event.stopPropagation()}
+                    >
+                        <button
+                            type="button"
+                            className="modal-close"
+                            onClick={() => setRejectionView(null)}
+                            aria-label="Cerrar"
+                        >
+                            <X size={20} />
+                        </button>
+
+                        <h2>Motivo del rechazo</h2>
+
+                        <p className="rejection-context">
+                            Grupo {rejectionView.groupCode} · Salón {rejectionView.classroom} ·{" "}
+                            {rejectionView.schedule}
+                        </p>
+
+                        <blockquote className="rejection-reason">
+                            {rejectionView.reason}
+                        </blockquote>
+
+                        <div className="request-modal-actions">
+                            <button
+                                type="button"
+                                className="request-cancel"
+                                onClick={() => setRejectionView(null)}
+                            >
+                                Cerrar
                             </button>
                         </div>
                     </div>

@@ -39,6 +39,14 @@ function prismaErrorMessage(error: any, fallback = "Ocurrió un error inesperado
   return fallback;
 }
 
+const NO_PERMISSION = "No tienes permiso para realizar esta acción.";
+
+// Los Server Actions son endpoints HTTP: que la interfaz no muestre el botón no
+// impide que se invoquen. Toda acción de administración verifica el rol aquí.
+function isAdmin(user: { role: string }) {
+  return user.role === "ADMIN" || user.role === "SUPER_ADMIN";
+}
+
 function actionOk(message: string): ActionState {
   return { ok: true, message };
 }
@@ -105,6 +113,11 @@ export async function approveRequestAction(
 
   try {
     const user = await requireUser();
+
+    if (!isAdmin(user)) {
+      return { ok: false, error: NO_PERMISSION };
+    }
+
     const requestId = Number(formData.get("requestId"));
 
     if (!Number.isInteger(requestId)) {
@@ -124,6 +137,9 @@ export async function approveRequestAction(
       return { ok: false, error: "El salón está inhabilitado o en mantenimiento." };
     }
 
+    // Se comparan pares día-hora, no los días y las horas por separado: con
+    // listas independientes, una solicitud de "Lun M1 + Mar M3" chocaba contra
+    // un "Lun M3" ajeno que nunca se pidió.
     const overlap = await prisma.classroomRequestSchedule.findFirst({
       where: {
         classroomRequest: {
@@ -131,13 +147,28 @@ export async function approveRequestAction(
           status: RequestStatus.APPROVED,
           id: { not: request.id }
         },
-        dayOfWeek: { in: request.schedules.map(s => s.dayOfWeek) },
-        schoolHourId: { in: request.schedules.map(s => s.schoolHourId) }
-      }
+        OR: request.schedules.map(schedule => ({
+          dayOfWeek: schedule.dayOfWeek,
+          schoolHourId: schedule.schoolHourId
+        }))
+      },
+      include: { schoolHour: true }
     });
 
     if (overlap) {
-      return { ok: false, error: "Ya existe una asignación aprobada para ese salón en el mismo día y hora." };
+      const dayName = {
+        MONDAY: "Lunes",
+        TUESDAY: "Martes",
+        WEDNESDAY: "Miércoles",
+        THURSDAY: "Jueves",
+        FRIDAY: "Viernes",
+        SATURDAY: "Sábado"
+      }[overlap.dayOfWeek] || overlap.dayOfWeek;
+
+      return {
+        ok: false,
+        error: `Ya existe una asignación aprobada para ese salón el ${dayName} en ${overlap.schoolHour.code}.`
+      };
     }
 
     await prisma.classroomRequest.update({
@@ -169,6 +200,11 @@ export async function rejectRequestAction(
 
   try {
     const user = await requireUser();
+
+    if (!isAdmin(user)) {
+      return { ok: false, error: NO_PERMISSION };
+    }
+
     const requestId = Number(formData.get("requestId"));
     const reason = String(formData.get("reason") || "").trim();
 
@@ -180,7 +216,7 @@ export async function rejectRequestAction(
       return { ok: false, error: "El motivo de rechazo debe tener al menos 5 caracteres." };
     }
 
-    await prisma.classroomRequest.updateMany({
+    const rejected = await prisma.classroomRequest.updateMany({
       where: { id: requestId, status: RequestStatus.PENDING },
       data: {
         status: RequestStatus.REJECTED,
@@ -189,6 +225,13 @@ export async function rejectRequestAction(
         reviewedAt: new Date()
       }
     });
+
+    // updateMany no falla cuando no encuentra nada: sin esta comprobación se
+    // reportaba "rechazada correctamente" aunque la solicitud ya estuviera
+    // revisada y no se hubiera modificado ningún registro.
+    if (rejected.count === 0) {
+      return { ok: false, error: "La solicitud ya no está pendiente o no existe." };
+    }
 
     revalidatePath("/admin/solicitudes");
     revalidatePath("/admin/asignaciones");
@@ -245,8 +288,9 @@ export async function savePersonAction(
 
   try {
     const current = await requireUser();
-    if (current.role !== "ADMIN" && current.role !== "SUPER_ADMIN") {
-      return { ok: false, error: "No tienes permiso para realizar esta acción." };
+
+    if (!isAdmin(current)) {
+      return { ok: false, error: NO_PERMISSION };
     }
 
     const parsed = personSchema.safeParse({
@@ -308,6 +352,11 @@ export async function deletePersonAction(
 
   try {
     const current = await requireUser();
+
+    if (!isAdmin(current)) {
+      return { ok: false, error: NO_PERMISSION };
+    }
+
     const id = Number(formData.get("id"));
 
     if (!Number.isInteger(id)) {
@@ -331,6 +380,20 @@ export async function deletePersonAction(
       return { ok: false, error: "No tienes permiso para eliminar este usuario." };
     }
 
+    // Borrar al usuario arrastra en cascada sus grupos y, con ellos, las clases
+    // y solicitudes asociadas. Con los datos reales eso puede vaciar el sistema
+    // completo, así que se exige reasignar los grupos antes de eliminarlo.
+    const ownedGroups = await prisma.academicGroup.count({
+      where: { coordinatorId: id }
+    });
+
+    if (ownedGroups > 0) {
+      return {
+        ok: false,
+        error: `No se puede eliminar: este usuario tiene ${ownedGroups} grupo(s) a su cargo. Reasígnalos a otro coordinador antes de eliminarlo.`
+      };
+    }
+
     const requests = await prisma.classroomRequest.findMany({
       where: { OR: [{ coordinatorId: id }, { reviewedById: id }] },
       select: { id: true }
@@ -341,7 +404,6 @@ export async function deletePersonAction(
     await prisma.$transaction([
       prisma.session.deleteMany({ where: { userId: id } }),
       prisma.classroomRequest.deleteMany({ where: { id: { in: requestIds } } }),
-      prisma.academicGroup.deleteMany({ where: { coordinatorId: id } }),
       prisma.user.delete({ where: { id } })
     ]);
 
@@ -371,7 +433,11 @@ export async function saveSubjectAction(
   const formData = getFormData(firstArg, secondArg);
 
   try {
-    await requireUser();
+    const current = await requireUser();
+
+    if (!isAdmin(current)) {
+      return { ok: false, error: NO_PERMISSION };
+    }
 
     const parsed = subjectSchema.safeParse({
       id: formData.get("id") || undefined,
@@ -472,7 +538,12 @@ export async function deleteSubjectAction(
   const formData = getFormData(firstArg, secondArg);
 
   try {
-    await requireUser();
+    const current = await requireUser();
+
+    if (!isAdmin(current)) {
+      return { ok: false, error: NO_PERMISSION };
+    }
+
     const id = Number(formData.get("id"));
 
     if (!Number.isInteger(id)) {
@@ -516,7 +587,11 @@ export async function saveClassroomAction(
   const formData = getFormData(firstArg, secondArg);
 
   try {
-    await requireUser();
+    const current = await requireUser();
+
+    if (!isAdmin(current)) {
+      return { ok: false, error: NO_PERMISSION };
+    }
 
     const parsed = classroomSchema.safeParse({
       id: formData.get("id") || undefined,
@@ -560,7 +635,12 @@ export async function deleteClassroomAction(
   const formData = getFormData(firstArg, secondArg);
 
   try {
-    await requireUser();
+    const current = await requireUser();
+
+    if (!isAdmin(current)) {
+      return { ok: false, error: NO_PERMISSION };
+    }
+
     const id = Number(formData.get("id"));
 
     if (!Number.isInteger(id)) {

@@ -521,7 +521,8 @@ th.sortable:hover {
     background: #f0f3f5
 }
 
-.empty-state {
+.empty-state,
+.empty-row {
     text-align: center;
     padding: 30px 16px;
     color: #8b9aA0;
@@ -986,9 +987,23 @@ tbody tr:hover {
 
 .pagination {
     display: flex;
+    align-items: center;
     justify-content: center;
     gap: 8px;
     padding: 12px
+}
+
+.capacity-low {
+    color: #b3272f
+}
+
+.capacity-low small {
+    font-size: 9px
+}
+
+.pagination-label {
+    color: #6b7280;
+    font-size: 13px
 }
 
 .pagination button {
@@ -1769,6 +1784,101 @@ tbody tr:hover {
     border-color: #f0c9ca;
     background: #fff1f1;
     color: #9a3035
+}
+
+.view-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px 6px 8px;
+    border: 1px solid #dfe4e7;
+    border-radius: 999px;
+    background: #fff;
+    color: #4b565c;
+    font-size: 12px;
+    white-space: nowrap;
+    cursor: pointer
+}
+
+.view-switch.on {
+    border-color: #43c967;
+    background: #f1fbf4;
+    color: #1c6b36
+}
+
+.view-switch-track {
+    position: relative;
+    width: 30px;
+    height: 16px;
+    border-radius: 999px;
+    background: #c8d0d4;
+    transition: background .15s
+}
+
+.view-switch.on .view-switch-track {
+    background: #43c967
+}
+
+.view-switch-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #fff;
+    transition: left .15s
+}
+
+.view-switch.on .view-switch-thumb {
+    left: 16px
+}
+
+.status-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px
+}
+
+.reason-btn {
+    display: inline-grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: #ffe3e4;
+    color: #b3272f;
+    cursor: pointer
+}
+
+.reason-btn:hover {
+    background: #ffc9cb
+}
+
+.rejection-modal {
+    width: min(460px, 95vw)
+}
+
+.rejection-context {
+    color: #7d888e;
+    font-size: 12px;
+    margin: 0 0 14px
+}
+
+.rejection-reason {
+    margin: 0 0 20px;
+    padding: 12px 14px;
+    max-height: 45vh;
+    overflow-y: auto;
+    border-left: 3px solid #ff4e55;
+    background: #fff5f5;
+    color: #4a2a2c;
+    font-size: 13px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere
 }
 
 .muted {

@@ -18,7 +18,7 @@ export function Sidebar({ userName, career }: { userName: string; career?: strin
 
   return (
     <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
-      <div className="sidebar-top"></div>
+      <div className="sidebar-top" onClick={() => setCollapsed(!collapsed)}><Menu size={25} /></div>
       <nav>
         {items.map(([href, label, Icon]) => (
           <Link key={href} href={href}><Icon size={16} /><span className={collapsed ? "hidden" : ""}>{label}</span></Link>

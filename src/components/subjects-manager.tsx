@@ -75,6 +75,7 @@ export function SubjectsManager({ subjects, careers, coordinators }: { subjects:
     const [search, setSearch] = useState("");
     const [careerFilter, setCareerFilter] = useState("all");
     const [semesterFilter, setSemesterFilter] = useState("all");
+    const [page, setPage] = useState(1);
     const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
     const [sortKey, setSortKey] = useState<string | null>(null);
     const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
@@ -136,6 +137,16 @@ export function SubjectsManager({ subjects, careers, coordinators }: { subjects:
             return al < bl ? (sortDir === "asc" ? -1 : 1) : al > bl ? (sortDir === "asc" ? 1 : -1) : 0;
         });
     })();
+
+    const PAGE_SIZE = 10;
+    const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+    const safePage = Math.min(page, pageCount);
+    const visible = sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+    const changeFilter = (setter: (value: string) => void, value: string) => {
+        setter(value);
+        setPage(1);
+    };
 
     const openAdd = () => {
         setNotice(null);
@@ -254,7 +265,7 @@ export function SubjectsManager({ subjects, careers, coordinators }: { subjects:
                         <p>Cantidad de materias: {subjects.length}</p>
                     </div>
                     <div className="table-filters">
-                        <select value={careerFilter} onChange={(event) => setCareerFilter(event.target.value)}>
+                        <select value={careerFilter} onChange={(event) => changeFilter(setCareerFilter, event.target.value)}>
                             <option value="all">Carrera</option>
                             {careers.map((career) => (
                                 <option key={career.id} value={career.id}>
@@ -262,7 +273,7 @@ export function SubjectsManager({ subjects, careers, coordinators }: { subjects:
                                 </option>
                             ))}
                         </select>
-                        <select value={semesterFilter} onChange={(event) => setSemesterFilter(event.target.value)}>
+                        <select value={semesterFilter} onChange={(event) => changeFilter(setSemesterFilter, event.target.value)}>
                             <option value="all">Semestre</option>
                             {semesterOptions.map((semester) => (
                                 <option key={semester} value={semester}>
@@ -273,7 +284,7 @@ export function SubjectsManager({ subjects, careers, coordinators }: { subjects:
                         <input
                             placeholder="Buscar materia..."
                             value={search}
-                            onChange={(event) => setSearch(event.target.value)}
+                            onChange={(event) => changeFilter(setSearch, event.target.value)}
                         />
                         <button className="round-add" type="button" onClick={openAdd} aria-label="Agregar materia">
                             <Plus />
@@ -305,14 +316,14 @@ export function SubjectsManager({ subjects, careers, coordinators }: { subjects:
                         </thead>
 
                         <tbody>
-                            {sorted.length === 0 ? (
+                            {visible.length === 0 ? (
                                 <tr>
                                     <td colSpan={8} className="empty-row">
                                         No se encontraron materias con los filtros seleccionados.
                                     </td>
                                 </tr>
                             ) : (
-                                sorted.map((subject) => (
+                                visible.map((subject) => (
                                     <tr key={subject.id}>
                                         <td>{subject.code}</td>
                                         <td>{subject.name}</td>
@@ -347,10 +358,25 @@ export function SubjectsManager({ subjects, careers, coordinators }: { subjects:
                 </div>
 
                 <div className="pagination">
-                    <button type="button">
+                    <button
+                        type="button"
+                        disabled={safePage <= 1}
+                        onClick={() => setPage((current) => Math.max(1, current - 1))}
+                        aria-label="Página anterior"
+                    >
                         <ArrowLeft size={18} />
                     </button>
-                    <button type="button">
+
+                    <span className="pagination-label">
+                        Página {safePage} de {pageCount}
+                    </span>
+
+                    <button
+                        type="button"
+                        disabled={safePage >= pageCount}
+                        onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+                        aria-label="Página siguiente"
+                    >
                         <ArrowRight size={18} />
                     </button>
                 </div>
