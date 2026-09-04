@@ -137,6 +137,9 @@ export async function approveRequestAction(
       return { ok: false, error: "El salón está inhabilitado o en mantenimiento." };
     }
 
+    // Se comparan pares día-hora, no los días y las horas por separado: con
+    // listas independientes, una solicitud de "Lun M1 + Mar M3" chocaba contra
+    // un "Lun M3" ajeno que nunca se pidió.
     const overlap = await prisma.classroomRequestSchedule.findFirst({
       where: {
         classroomRequest: {
@@ -144,13 +147,28 @@ export async function approveRequestAction(
           status: RequestStatus.APPROVED,
           id: { not: request.id }
         },
-        dayOfWeek: { in: request.schedules.map(s => s.dayOfWeek) },
-        schoolHourId: { in: request.schedules.map(s => s.schoolHourId) }
-      }
+        OR: request.schedules.map(schedule => ({
+          dayOfWeek: schedule.dayOfWeek,
+          schoolHourId: schedule.schoolHourId
+        }))
+      },
+      include: { schoolHour: true }
     });
 
     if (overlap) {
-      return { ok: false, error: "Ya existe una asignación aprobada para ese salón en el mismo día y hora." };
+      const dayName = {
+        MONDAY: "Lunes",
+        TUESDAY: "Martes",
+        WEDNESDAY: "Miércoles",
+        THURSDAY: "Jueves",
+        FRIDAY: "Viernes",
+        SATURDAY: "Sábado"
+      }[overlap.dayOfWeek] || overlap.dayOfWeek;
+
+      return {
+        ok: false,
+        error: `Ya existe una asignación aprobada para ese salón el ${dayName} en ${overlap.schoolHour.code}.`
+      };
     }
 
     await prisma.classroomRequest.update({
@@ -198,7 +216,7 @@ export async function rejectRequestAction(
       return { ok: false, error: "El motivo de rechazo debe tener al menos 5 caracteres." };
     }
 
-    await prisma.classroomRequest.updateMany({
+    const rejected = await prisma.classroomRequest.updateMany({
       where: { id: requestId, status: RequestStatus.PENDING },
       data: {
         status: RequestStatus.REJECTED,
@@ -207,6 +225,13 @@ export async function rejectRequestAction(
         reviewedAt: new Date()
       }
     });
+
+    // updateMany no falla cuando no encuentra nada: sin esta comprobación se
+    // reportaba "rechazada correctamente" aunque la solicitud ya estuviera
+    // revisada y no se hubiera modificado ningún registro.
+    if (rejected.count === 0) {
+      return { ok: false, error: "La solicitud ya no está pendiente o no existe." };
+    }
 
     revalidatePath("/admin/solicitudes");
     revalidatePath("/admin/asignaciones");
