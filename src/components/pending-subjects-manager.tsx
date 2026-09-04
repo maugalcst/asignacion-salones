@@ -124,6 +124,25 @@ type SelectedSlot = {
     pattern: DayPattern;
 };
 
+type CareerRequest = {
+    id: number;
+    status: RequestStatus;
+    rejectionReason: string | null;
+    requestedAt: string | Date;
+    groupCode: string | null;
+    subject: {
+        code: string;
+        name: string;
+        type: string;
+    };
+    classroom: {
+        number: string;
+        building: string;
+        floor: number;
+    };
+    schedules: RequestSchedule[];
+};
+
 type RejectionView = {
     groupCode: string;
     classroom: string;
@@ -167,6 +186,17 @@ const shortDayLabel: Record<string, string> = {
     SATURDAY: "S"
 };
 
+// Los horarios llegan ordenados por hora escolar, no por día, así que los
+// días de una misma hora se reordenan aquí para leerse como "LMV" y no "VLM".
+const dayOrder: Record<string, number> = {
+    MONDAY: 1,
+    TUESDAY: 2,
+    WEDNESDAY: 3,
+    THURSDAY: 4,
+    FRIDAY: 5,
+    SATURDAY: 6
+};
+
 type RequestSchedule = {
     dayOfWeek: string;
     schoolHourId: number;
@@ -200,14 +230,20 @@ function formatSchedules(schedules: RequestSchedule[]) {
             });
         }
 
-        grouped
-            .get(hourCode)
-            ?.days.push(shortDayLabel[schedule.dayOfWeek] || schedule.dayOfWeek);
+        grouped.get(hourCode)?.days.push(schedule.dayOfWeek);
     }
 
     return Array.from(grouped.entries())
         .sort(([, a], [, b]) => a.sortOrder - b.sortOrder)
-        .map(([hourCode, data]) => `${data.days.join("")} · ${hourCode}`)
+        .map(([hourCode, data]) => {
+            const days = data.days
+                .slice()
+                .sort((a, b) => (dayOrder[a] ?? 99) - (dayOrder[b] ?? 99))
+                .map((day) => shortDayLabel[day] || day)
+                .join("");
+
+            return `${days} · ${hourCode}`;
+        })
         .join(", ");
 }
 export function PendingSubjectsManager({
@@ -217,7 +253,8 @@ export function PendingSubjectsManager({
     schoolHours,
     buildings,
     shifts,
-    busyRequests
+    busyRequests,
+    careerRequests
 }: {
     subjects: Subject[];
     groups: Group[];
@@ -226,8 +263,13 @@ export function PendingSubjectsManager({
     buildings: string[];
     shifts: string[];
     busyRequests: BusyRequest[];
+    careerRequests: CareerRequest[];
 }) {
     const [search, setSearch] = useState("");
+    const [showRequests, setShowRequests] = useState(false);
+    const [requestStatus, setRequestStatus] = useState("");
+    const [requestGroup, setRequestGroup] = useState("");
+    const [requestBuilding, setRequestBuilding] = useState("");
     const [sortKey, setSortKey] = useState<string | null>(null);
     const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
     const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
@@ -290,6 +332,43 @@ export function PendingSubjectsManager({
             return al < bl ? (sortDir === "asc" ? -1 : 1) : al > bl ? (sortDir === "asc" ? 1 : -1) : 0;
         });
     }, [rows, sortKey, sortDir]);
+
+    const requestGroupOptions = useMemo(
+        () =>
+            Array.from(
+                new Set(
+                    careerRequests
+                        .map((request) => request.groupCode)
+                        .filter((code): code is string => Boolean(code))
+                )
+            ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+        [careerRequests]
+    );
+
+    const requestBuildingOptions = useMemo(
+        () =>
+            Array.from(
+                new Set(careerRequests.map((request) => request.classroom.building))
+            ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+        [careerRequests]
+    );
+
+    const filteredRequests = useMemo(
+        () =>
+            careerRequests.filter((request) => {
+                if (requestStatus && request.status !== requestStatus) return false;
+                if (requestGroup && request.groupCode !== requestGroup) return false;
+                if (requestBuilding && request.classroom.building !== requestBuilding) return false;
+                return true;
+            }),
+        [careerRequests, requestStatus, requestGroup, requestBuilding]
+    );
+
+    const clearRequestFilters = () => {
+        setRequestStatus("");
+        setRequestGroup("");
+        setRequestBuilding("");
+    };
 
     const patternOptions = useMemo(() => {
         if (!selectedSubject) return [];
@@ -490,20 +569,78 @@ export function PendingSubjectsManager({
             <section className="table-card coordinator-card">
                 <div className="table-heading">
                     <div>
-                        <h2>Materias por coordinar</h2>
-                        <p>Selecciona una materia y solicita salón por día y hora escolar.</p>
+                        <h2>{showRequests ? "Solicitudes realizadas" : "Materias por coordinar"}</h2>
+                        <p>
+                            {showRequests
+                                ? `${filteredRequests.length} de ${careerRequests.length} solicitudes de tu carrera.`
+                                : "Selecciona una materia y solicita salón por día y hora escolar."}
+                        </p>
                     </div>
 
                     <div className="table-filters">
-                        <input
-                            placeholder="Buscar materia, clave, carrera o tipo..."
-                            value={search}
-                            onChange={(event) => setSearch(event.target.value)}
-                        />
+                        {showRequests ? (
+                            <>
+                                <select
+                                    value={requestStatus}
+                                    onChange={(event) => setRequestStatus(event.target.value)}
+                                >
+                                    <option value="">Estado</option>
+                                    <option value="PENDING">En revisión</option>
+                                    <option value="APPROVED">Aprobada</option>
+                                    <option value="REJECTED">Rechazada</option>
+                                </select>
+
+                                <select
+                                    value={requestGroup}
+                                    onChange={(event) => setRequestGroup(event.target.value)}
+                                >
+                                    <option value="">Grupo</option>
+                                    {requestGroupOptions.map((code) => (
+                                        <option key={code} value={code}>
+                                            {code}
+                                        </option>
+                                    ))}
+                                </select>
+
+                                <select
+                                    value={requestBuilding}
+                                    onChange={(event) => setRequestBuilding(event.target.value)}
+                                >
+                                    <option value="">Edificio</option>
+                                    {requestBuildingOptions.map((item) => (
+                                        <option key={item} value={item}>
+                                            Edificio {item}
+                                        </option>
+                                    ))}
+                                </select>
+                            </>
+                        ) : (
+                            <input
+                                placeholder="Buscar materia, clave, carrera o tipo..."
+                                value={search}
+                                onChange={(event) => setSearch(event.target.value)}
+                            />
+                        )}
+
+                        <button
+                            type="button"
+                            className={`view-switch ${showRequests ? "on" : ""}`}
+                            role="switch"
+                            aria-checked={showRequests}
+                            onClick={() => {
+                                setShowRequests((current) => !current);
+                                clearRequestFilters();
+                            }}
+                        >
+                            <span className="view-switch-track">
+                                <span className="view-switch-thumb" />
+                            </span>
+                            Ver solicitudes
+                        </button>
                     </div>
                 </div>
 
-                <div className="table-scroll">
+                <div className="table-scroll" hidden={showRequests}>
                     <table>
                         <thead>
                             <tr>
@@ -613,7 +750,82 @@ export function PendingSubjectsManager({
                     </table>
                 </div>
 
-                <div className="pagination">
+                {showRequests ? (
+                    <div className="table-scroll">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Grupo</th>
+                                    <th>Materia</th>
+                                    <th>Salón</th>
+                                    <th>Horario</th>
+                                    <th>Estado</th>
+                                    <th>Fecha</th>
+                                </tr>
+                            </thead>
+
+                            <tbody>
+                                {filteredRequests.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={6} className="empty-row">
+                                            {careerRequests.length === 0
+                                                ? "Aún no has realizado solicitudes de salón."
+                                                : "Ninguna solicitud coincide con los filtros seleccionados."}
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    filteredRequests.map((request) => (
+                                        <tr key={request.id}>
+                                            <td>{request.groupCode || "—"}</td>
+                                            <td>
+                                                {request.subject.code}
+                                                <br />
+                                                <small className="muted">{request.subject.name}</small>
+                                            </td>
+                                            <td>
+                                                {request.classroom.building}-{request.classroom.number}
+                                            </td>
+                                            <td>{formatSchedules(request.schedules)}</td>
+                                            <td>
+                                                <div className="status-cell">
+                                                    <span className={`status ${request.status.toLowerCase()}`}>
+                                                        {requestStatusLabel(request.status)}
+                                                    </span>
+
+                                                    {request.status === "REJECTED" && request.rejectionReason ? (
+                                                        <button
+                                                            type="button"
+                                                            className="reason-btn"
+                                                            title="Ver motivo del rechazo"
+                                                            aria-label="Ver motivo del rechazo"
+                                                            onClick={() =>
+                                                                setRejectionView({
+                                                                    groupCode: request.groupCode || "—",
+                                                                    classroom: request.classroom.number,
+                                                                    schedule: formatSchedules(request.schedules),
+                                                                    reason: request.rejectionReason || ""
+                                                                })
+                                                            }
+                                                        >
+                                                            <Info size={13} />
+                                                        </button>
+                                                    ) : null}
+                                                </div>
+                                            </td>
+                                            <td>
+                                                {new Intl.DateTimeFormat("es-MX", {
+                                                    dateStyle: "medium"
+                                                }).format(new Date(request.requestedAt))}
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                ) : null}
+
+                <div className="pagination" hidden={showRequests}>
                     <button type="button">
                         <ArrowLeft size={18} />
                     </button>

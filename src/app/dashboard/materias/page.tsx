@@ -25,7 +25,7 @@ export default async function PendingSubjectsPage() {
     );
   }
 
-  const [subjects, groups, classrooms, schoolHours, busyRequests] =
+  const [subjects, groups, classrooms, schoolHours, busyRequests, careerRequests] =
     await Promise.all([
       prisma.subject.findMany({
         where: {
@@ -45,6 +45,11 @@ export default async function PendingSubjectsPage() {
                 }
               },
               requests: {
+                // Solo las propias: un coordinador no debe ver las solicitudes
+                // de otro, ni sus motivos de rechazo.
+                where: {
+                  coordinatorId: user.id
+                },
                 include: {
                   classroom: true,
                   schedules: {
@@ -148,6 +153,39 @@ export default async function PendingSubjectsPage() {
             ]
           }
         }
+      }),
+
+      // Solicitudes propias del coordinador, una entrada por solicitud (no por
+      // horario) para poder listarlas y filtrarlas en la vista aparte. Se filtra
+      // por coordinatorId para que nadie vea las solicitudes de otro coordinador.
+      prisma.classroomRequest.findMany({
+        where: {
+          coordinatorId: user.id
+        },
+        include: {
+          subject: true,
+          classroom: true,
+          groupSubject: {
+            include: {
+              group: true
+            }
+          },
+          schedules: {
+            include: {
+              schoolHour: true
+            },
+            orderBy: [
+              {
+                schoolHour: {
+                  sortOrder: "asc"
+                }
+              }
+            ]
+          }
+        },
+        orderBy: {
+          requestedAt: "desc"
+        }
       })
     ]);
 
@@ -195,6 +233,30 @@ export default async function PendingSubjectsPage() {
     }))
   }));
 
+  const transformedRequests = careerRequests.map(r => ({
+    id: r.id,
+    status: r.status,
+    rejectionReason: r.rejectionReason,
+    requestedAt: r.requestedAt,
+    groupCode: r.groupSubject?.group.code ?? null,
+    subject: { code: r.subject.code, name: r.subject.name, type: r.subject.type },
+    classroom: {
+      number: r.classroom.number,
+      building: r.classroom.building,
+      floor: r.classroom.floor
+    },
+    schedules: r.schedules.map(sch => ({
+      dayOfWeek: sch.dayOfWeek,
+      schoolHourId: sch.schoolHourId,
+      schoolHour: {
+        code: sch.schoolHour.code,
+        startTime: sch.schoolHour.startTime,
+        endTime: sch.schoolHour.endTime,
+        sortOrder: sch.schoolHour.sortOrder
+      }
+    }))
+  }));
+
   const buildings = Array.from(new Set(classrooms.map(c => c.building))).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   const shifts = Array.from(new Set(schoolHours.map(h => h.shift)));
 
@@ -213,6 +275,7 @@ export default async function PendingSubjectsPage() {
         buildings={buildings}
         shifts={shifts}
         busyRequests={transformedBusy}
+        careerRequests={transformedRequests}
       />
     </>
   );

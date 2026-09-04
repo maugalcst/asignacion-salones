@@ -1771,6 +1771,60 @@ tbody tr:hover {
     color: #9a3035
 }
 
+.view-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px 6px 8px;
+    border: 1px solid #dfe4e7;
+    border-radius: 999px;
+    background: #fff;
+    color: #4b565c;
+    font-size: 12px;
+    white-space: nowrap;
+    cursor: pointer
+}
+
+.view-switch.on {
+    border-color: #43c967;
+    background: #f1fbf4;
+    color: #1c6b36
+}
+
+.view-switch-track {
+    position: relative;
+    width: 30px;
+    height: 16px;
+    border-radius: 999px;
+    background: #c8d0d4;
+    transition: background .15s
+}
+
+.view-switch.on .view-switch-track {
+    background: #43c967
+}
+
+.view-switch-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #fff;
+    transition: left .15s
+}
+
+.view-switch.on .view-switch-thumb {
+    left: 16px
+}
+
+.status-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px
+}
+
 .reason-btn {
     display: inline-grid;
     place-items: center;
