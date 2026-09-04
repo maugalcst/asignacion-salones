@@ -7,7 +7,7 @@ export default async function LoginPage() {
   const user = await getCurrentUser();
 
   if (user) {
-    redirect(user.role === "ADMIN" ? "/admin/solicitudes" : "/dashboard");
+    redirect(user.role === "SUPER_ADMIN" || user.role === "ADMIN" ? "/admin/solicitudes" : "/dashboard");
   }
 
   return (
