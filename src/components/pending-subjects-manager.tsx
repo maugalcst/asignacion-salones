@@ -404,6 +404,22 @@ export function PendingSubjectsManager({
             .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
     }, [groups, selectedSubject]);
 
+    // Se separan los dos casos: los grupos que ya cursan la materia (con su
+    // inscripción real) y los demás códigos de la carrera, que al elegirlos
+    // crean una sección nueva de esta materia.
+    const enrolledGroups = useMemo(
+        () =>
+            groupOptions.filter(
+                (group): group is { code: string; students: number } => group.students !== null
+            ),
+        [groupOptions]
+    );
+
+    const otherGroups = useMemo(
+        () => groupOptions.filter((group) => group.students === null),
+        [groupOptions]
+    );
+
     const selectedGroupStudents = useMemo(() => {
         if (!groupCode) return null;
         return groupOptions.find((option) => option.code === groupCode)?.students ?? null;
@@ -921,7 +937,7 @@ export function PendingSubjectsManager({
                         <div className="request-subject-summary">
                             <strong>{selectedSubject.code}</strong>
                             <span>{selectedSubject.name}</span>
-                            <em>Tipo: {subjectTypeLabel}</em>
+                            <em>Requiere: {subjectTypeLabel}</em>
                             <b className="subject-qty">
                                 {selectedGroupStudents
                                     ? `${selectedGroupStudents} alumnos`
@@ -933,18 +949,32 @@ export function PendingSubjectsManager({
 
                         <div className="request-form-grid request-form-grid-3">
                             <div className="form-field">
-                                <label>Grupo</label>
+                                <label>Grupo (sección de la materia)</label>
                                 <select
                                     value={groupCode}
                                     onChange={(event) => setGroupCode(event.target.value)}
                                 >
                                     <option value="">Seleccione grupo</option>
-                                    {groupOptions.map((group) => (
-                                        <option key={group.code} value={group.code}>
-                                            {group.code}
-                                            {group.students ? ` · ${group.students} alumnos` : ""}
-                                        </option>
-                                    ))}
+
+                                    {enrolledGroups.length > 0 ? (
+                                        <optgroup label="Ya cursan esta materia">
+                                            {enrolledGroups.map((group) => (
+                                                <option key={group.code} value={group.code}>
+                                                    Grupo {group.code} · {group.students} alumnos
+                                                </option>
+                                            ))}
+                                        </optgroup>
+                                    ) : null}
+
+                                    {otherGroups.length > 0 ? (
+                                        <optgroup label="Otros grupos de la carrera (crea sección nueva)">
+                                            {otherGroups.map((group) => (
+                                                <option key={group.code} value={group.code}>
+                                                    Grupo {group.code}
+                                                </option>
+                                            ))}
+                                        </optgroup>
+                                    ) : null}
                                 </select>
                             </div>
 
