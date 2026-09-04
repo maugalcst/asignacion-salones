@@ -993,6 +993,14 @@ tbody tr:hover {
     padding: 12px
 }
 
+.capacity-low {
+    color: #b3272f
+}
+
+.capacity-low small {
+    font-size: 9px
+}
+
 .pagination-label {
     color: #6b7280;
     font-size: 13px

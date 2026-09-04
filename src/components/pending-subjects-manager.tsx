@@ -381,10 +381,33 @@ export function PendingSubjectsManager({
         return selectedSubject.type === "Laboratorio" ? LAB_DAY_PATTERNS : SALON_DAY_PATTERNS;
     }, [selectedSubject]);
 
+    // Varias filas de AcademicGroup comparten código (una por materia), así que
+    // la lista se deduplica: 63 grupos reales en vez de 847 opciones repetidas.
+    // Cuando el grupo ya cursa esta materia se conoce su inscripción real.
     const groupOptions = useMemo(() => {
         if (!selectedSubject) return [];
-        return groups.filter((group) => group.semester === selectedSubject.semester);
+
+        const byCode = new Map<string, number | null>();
+
+        for (const groupSubject of selectedSubject.groupSubjects) {
+            byCode.set(groupSubject.group.code, groupSubject.group.students);
+        }
+
+        for (const group of groups) {
+            if (group.semester === selectedSubject.semester && !byCode.has(group.code)) {
+                byCode.set(group.code, null);
+            }
+        }
+
+        return Array.from(byCode.entries())
+            .map(([code, students]) => ({ code, students }))
+            .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
     }, [groups, selectedSubject]);
+
+    const selectedGroupStudents = useMemo(() => {
+        if (!groupCode) return null;
+        return groupOptions.find((option) => option.code === groupCode)?.students ?? null;
+    }, [groupOptions, groupCode]);
 
     const openRequestModal = (subject: Subject) => {
         setNotice(null);
@@ -899,7 +922,13 @@ export function PendingSubjectsManager({
                             <strong>{selectedSubject.code}</strong>
                             <span>{selectedSubject.name}</span>
                             <em>Tipo: {subjectTypeLabel}</em>
-                            <b className="subject-qty">{selectedSubject.cantidad} alumnos</b>
+                            <b className="subject-qty">
+                                {selectedGroupStudents
+                                    ? `${selectedGroupStudents} alumnos`
+                                    : groupCode
+                                        ? "Grupo nuevo"
+                                        : "Selecciona un grupo"}
+                            </b>
                         </div>
 
                         <div className="request-form-grid request-form-grid-3">
@@ -911,8 +940,9 @@ export function PendingSubjectsManager({
                                 >
                                     <option value="">Seleccione grupo</option>
                                     {groupOptions.map((group) => (
-                                        <option key={group.id} value={group.code}>
+                                        <option key={group.code} value={group.code}>
                                             {group.code}
+                                            {group.students ? ` · ${group.students} alumnos` : ""}
                                         </option>
                                     ))}
                                 </select>
@@ -980,6 +1010,7 @@ export function PendingSubjectsManager({
                                 <thead>
                                     <tr>
                                         <th>Salón</th>
+                                        <th>Cupo</th>
                                         <th>Hora</th>
                                         <th>Grupo</th>
                                         <th>Asign</th>
@@ -989,17 +1020,29 @@ export function PendingSubjectsManager({
                                 <tbody>
                                     {resultRows.length === 0 ? (
                                         <tr>
-                                            <td colSpan={4} className="empty-row">
+                                            <td colSpan={5} className="empty-row">
                                                 Ajusta los filtros para ver espacios disponibles.
                                             </td>
                                         </tr>
                                     ) : (
                                         resultRows.map(({ classroom, hour }) => {
                                             const selected = isSelected(classroom.id, hour.id);
+                                            const tooSmall =
+                                                selectedGroupStudents !== null &&
+                                                classroom.capacity < selectedGroupStudents;
 
                                             return (
                                                 <tr key={`${classroom.id}-${hour.id}`}>
                                                     <td>{classroom.number}</td>
+                                                    <td className={tooSmall ? "capacity-low" : ""}>
+                                                        {classroom.capacity}
+                                                        {tooSmall ? (
+                                                            <>
+                                                                <br />
+                                                                <small>insuficiente</small>
+                                                            </>
+                                                        ) : null}
+                                                    </td>
                                                     <td>
                                                         {hour.code} · {hour.startTime} - {hour.endTime}
                                                     </td>
@@ -1009,6 +1052,11 @@ export function PendingSubjectsManager({
                                                             <button
                                                                 type="button"
                                                                 className={selected ? "reject-icon" : "approve-icon"}
+                                                                title={
+                                                                    tooSmall
+                                                                        ? `Aviso: el salón tiene cupo para ${classroom.capacity} y el grupo es de ${selectedGroupStudents}.`
+                                                                        : undefined
+                                                                }
                                                                 onClick={() => toggleSlot(classroom.id, hour.id)}
                                                                 aria-label={
                                                                     selected ? "Quitar espacio" : "Asignar espacio"
