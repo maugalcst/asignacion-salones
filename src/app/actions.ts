@@ -204,7 +204,7 @@ const personSchema = z
     id: z.coerce.number().int().positive().optional(),
     name: z.string().trim().min(3, "El nombre debe tener al menos 3 caracteres."),
     careerId: z.coerce.number().int().positive("Selecciona un área/carrera."),
-    role: z.enum(["ADMIN", "COORDINATOR", "TEACHER"]),
+    role: z.enum(["ADMIN", "COORDINATOR", "TEACHER", "SUPER_ADMIN"]),
     username: z
       .string()
       .trim()
@@ -244,7 +244,10 @@ export async function savePersonAction(
   const formData = getFormData(firstArg, secondArg);
 
   try {
-    await requireUser();
+    const current = await requireUser();
+    if (current.role !== "ADMIN" && current.role !== "SUPER_ADMIN") {
+      return { ok: false, error: "No tienes permiso para realizar esta acción." };
+    }
 
     const parsed = personSchema.safeParse({
       id: formData.get("id") || undefined,
