@@ -423,17 +423,17 @@ export function PendingSubjectsManager({
     };
 
     const resultRows = useMemo(() => {
-        if (!selectedSubject || !pattern || !building || !shift || !groupCode) return [];
+        if (!selectedSubject || !pattern || !groupCode) return [];
 
         const isLab = selectedSubject.type === "Laboratorio";
         const rows = [];
 
         for (const classroom of classrooms) {
-            if (classroom.building !== building) continue;
+            if (building && classroom.building !== building) continue;
             if (isLab ? classroom.type !== "Laboratorio" : classroom.type !== "Aula") continue;
 
             for (const hour of schoolHours) {
-                if (hour.shift !== shift) continue;
+                if (shift && hour.shift !== shift) continue;
 
                 const busy = busyRequests.some(
                     (request) =>
