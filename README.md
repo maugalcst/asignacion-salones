@@ -70,10 +70,10 @@ Copy-Item .env.example .env
 
 Abre `http://localhost:3000`.
 
-## Cuenta de prueba
+## Cuentas de prueba
 
-- Correo: `admin@uanl.edu.mx`
-- Contraseña: `admin123`
+- Admin: `admin@uanl.edu.mx` / `admin123`
+- Super admin: `superadmin@uanl.edu.mx` / `superadmin123`
 
 ## Base de datos incluida
 

@@ -55,8 +55,20 @@ async function main() {
   const careers = await Promise.all(
     careerData.map(([name, acronym]) => prisma.career.create({ data: { name, acronym } }))
   );
-
   const passwordHash = await bcrypt.hash("admin123", 12);
+
+  await prisma.user.create({
+    data: {
+      name: "Sistema Master",
+      username: "superadmin",
+      email: "superadmin@uanl.edu.mx",
+      passwordHash: await bcrypt.hash("superadmin123", 12),
+      role: UserRole.SUPER_ADMIN,
+      active: true,
+      careerId: null
+    }
+  });
+
   const people = [
     ["Juan García Gallegos", "admin@uanl.edu.mx", "juan.garcia@uanl.edu.mx", null, UserRole.ADMIN, 0],
     ["Aldair Alejandro Beltran Melendez", "1802548", "aldair.beltran@uanl.edu.mx", "1802548", UserRole.TEACHER, 0],
