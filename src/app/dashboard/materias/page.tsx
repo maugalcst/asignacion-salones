@@ -161,6 +161,7 @@ export default async function PendingSubjectsPage() {
           id: r.id,
           dayOfWeek: sch.dayOfWeek,
           status: r.status,
+          rejectionReason: r.rejectionReason,
           classroom: r.classroom,
           schoolHour: sch.schoolHour,
           schedules: [{

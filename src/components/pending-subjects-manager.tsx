@@ -9,6 +9,7 @@ import {
     ArrowUpDown,
     Building2,
     Check,
+    Info,
     Plus,
     X
 } from "lucide-react";
@@ -26,6 +27,7 @@ type SubjectRequest = {
     id: number;
     dayOfWeek: string;
     status: RequestStatus;
+    rejectionReason: string | null;
     classroom: {
         building: string;
         floor: number;
@@ -120,6 +122,13 @@ type SelectedSlot = {
     classroomId: number;
     hourId: number;
     pattern: DayPattern;
+};
+
+type RejectionView = {
+    groupCode: string;
+    classroom: string;
+    schedule: string;
+    reason: string;
 };
 
 const SALON_DAY_PATTERNS: DayPattern[] = [
@@ -222,6 +231,7 @@ export function PendingSubjectsManager({
     const [sortKey, setSortKey] = useState<string | null>(null);
     const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
     const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
+    const [rejectionView, setRejectionView] = useState<RejectionView | null>(null);
 
     const handleSort = (key: string) => {
         if (sortKey !== key) { setSortKey(key); setSortDir("asc"); }
@@ -549,8 +559,11 @@ export function PendingSubjectsManager({
                                                     {requests.length === 0 ? (
                                                         <span className="muted">Sin horario solicitado</span>
                                                     ) : (
-                                                        requests.map((request) => (
-                                                            <span key={request.id} className="schedule-chip">
+                                                        requests.map((request, index) => (
+                                                            <span
+                                                                key={`${request.id}-${request.dayOfWeek}-${request.schoolHour.code}-${index}`}
+                                                                className="schedule-chip"
+                                                            >
                                                                 Grupo {request.groupCode} ·{" "}
                                                                 {formatSchedules(request.schedules)}·{" "}
                                                                 {request.classroom.number}
@@ -558,6 +571,25 @@ export function PendingSubjectsManager({
                                                                 <b className={`status ${request.status.toLowerCase()}`}>
                                                                     {requestStatusLabel(request.status)}
                                                                 </b>
+
+                                                                {request.status === "REJECTED" && request.rejectionReason ? (
+                                                                    <button
+                                                                        type="button"
+                                                                        className="reason-btn"
+                                                                        title="Ver motivo del rechazo"
+                                                                        aria-label="Ver motivo del rechazo"
+                                                                        onClick={() =>
+                                                                            setRejectionView({
+                                                                                groupCode: request.groupCode,
+                                                                                classroom: request.classroom.number,
+                                                                                schedule: formatSchedules(request.schedules),
+                                                                                reason: request.rejectionReason || ""
+                                                                            })
+                                                                        }
+                                                                    >
+                                                                        <Info size={13} />
+                                                                    </button>
+                                                                ) : null}
                                                             </span>
                                                         ))
                                                     )}
@@ -833,6 +865,52 @@ export function PendingSubjectsManager({
                                 onClick={submitRequest}
                             >
                                 {pending ? "Enviando..." : "Enviar solicitud"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
+            {rejectionView ? (
+                <div
+                    className="modal-backdrop"
+                    onMouseDown={(event) => {
+                        if (event.target === event.currentTarget) {
+                            setRejectionView(null);
+                        }
+                    }}
+                >
+                    <div
+                        className="modal rejection-modal"
+                        onMouseDown={(event) => event.stopPropagation()}
+                    >
+                        <button
+                            type="button"
+                            className="modal-close"
+                            onClick={() => setRejectionView(null)}
+                            aria-label="Cerrar"
+                        >
+                            <X size={20} />
+                        </button>
+
+                        <h2>Motivo del rechazo</h2>
+
+                        <p className="rejection-context">
+                            Grupo {rejectionView.groupCode} · Salón {rejectionView.classroom} ·{" "}
+                            {rejectionView.schedule}
+                        </p>
+
+                        <blockquote className="rejection-reason">
+                            {rejectionView.reason}
+                        </blockquote>
+
+                        <div className="request-modal-actions">
+                            <button
+                                type="button"
+                                className="request-cancel"
+                                onClick={() => setRejectionView(null)}
+                            >
+                                Cerrar
                             </button>
                         </div>
                     </div>

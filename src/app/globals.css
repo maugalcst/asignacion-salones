@@ -1771,6 +1771,45 @@ tbody tr:hover {
     color: #9a3035
 }
 
+.reason-btn {
+    display: inline-grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: #ffe3e4;
+    color: #b3272f;
+    cursor: pointer
+}
+
+.reason-btn:hover {
+    background: #ffc9cb
+}
+
+.rejection-modal {
+    width: min(460px, 95vw)
+}
+
+.rejection-context {
+    color: #7d888e;
+    font-size: 12px;
+    margin: 0 0 14px
+}
+
+.rejection-reason {
+    margin: 0 0 20px;
+    padding: 12px 14px;
+    border-left: 3px solid #ff4e55;
+    background: #fff5f5;
+    color: #4a2a2c;
+    font-size: 13px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere
+}
+
 .muted {
     color: #7d888e;
     font-size: 11px
