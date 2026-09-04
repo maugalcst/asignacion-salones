@@ -50,12 +50,11 @@ function actionError(error: any, fallback?: string): ActionState {
 }
 
 const loginSchema = z.object({
-  username: z
+  identifier: z
     .string()
     .trim()
-    .min(3, "El usuario debe tener al menos 3 caracteres.")
-    .max(40, "El usuario no puede exceder 40 caracteres.")
-    .regex(/^[a-zA-Z0-9.@_-]+$/, "El usuario solo puede contener letras, números, punto, arroba, guion y guion bajo."),
+    .min(3, "El usuario o correo debe tener al menos 3 caracteres.")
+    .max(100, "El usuario o correo no puede exceder 100 caracteres."),
   password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres.")
 });
 
@@ -65,7 +64,7 @@ function normalizeUsername(username: string) {
 
 export async function loginAction(_: ActionState | undefined, formData: FormData): Promise<ActionState> {
   const parsed = loginSchema.safeParse({
-    username: formData.get("username"),
+    identifier: formData.get("identifier"),
     password: formData.get("password")
   });
 
@@ -73,16 +72,24 @@ export async function loginAction(_: ActionState | undefined, formData: FormData
     return { ok: false, error: validationError(parsed.error) };
   }
 
-  const user = await prisma.user.findUnique({
-    where: { username: normalizeUsername(parsed.data.username) }
+  const identifier = normalizeUsername(parsed.data.identifier);
+
+  const user = await prisma.user.findFirst({
+    where: {
+      active: true,
+      OR: [
+        { username: identifier },
+        { email: identifier }
+      ]
+    }
   });
 
-  if (!user || !user.active || !(await bcrypt.compare(parsed.data.password, user.passwordHash))) {
+  if (!user || !(await bcrypt.compare(parsed.data.password, user.passwordHash))) {
     return { ok: false, error: "Usuario o contraseña incorrectos." };
   }
 
   await createSession(user.id);
-  redirect(user.role === "ADMIN" ? "/admin/solicitudes" : "/dashboard");
+  redirect(user.role === "SUPER_ADMIN" || user.role === "ADMIN" ? "/admin/solicitudes" : "/dashboard");
 }
 
 export async function logoutAction() {
@@ -306,6 +313,19 @@ export async function deletePersonAction(
 
     if (id === current.id) {
       return { ok: false, error: "No puedes eliminar tu propia cuenta." };
+    }
+
+    const targetUser = await prisma.user.findUnique({
+      where: { id },
+      select: { role: true }
+    });
+
+    if (!targetUser) {
+      return { ok: false, error: "Usuario no encontrado." };
+    }
+
+    if (current.role !== "SUPER_ADMIN" && (targetUser.role === "SUPER_ADMIN" || targetUser.role === "ADMIN")) {
+      return { ok: false, error: "No tienes permiso para eliminar este usuario." };
     }
 
     const requests = await prisma.classroomRequest.findMany({

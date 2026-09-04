@@ -22,7 +22,7 @@ type Career = {
     name: string;
 };
 
-type PersonRole = "ADMIN" | "COORDINATOR" | "TEACHER";
+type PersonRole = "ADMIN" | "COORDINATOR" | "TEACHER" | "SUPER_ADMIN";
 
 type Person = {
     id: number;
@@ -62,7 +62,8 @@ const PAGE_SIZE = 10;
 const roleLabel: Record<PersonRole, string> = {
     ADMIN: "Administrador",
     COORDINATOR: "Coordinador",
-    TEACHER: "Ayudante"
+    TEACHER: "Ayudante",
+    SUPER_ADMIN: "Super Admin"
 };
 
 const emptyForm: PersonForm = {
@@ -305,6 +306,7 @@ export function PersonnelManager({
                             <option value="ADMIN">Administrador</option>
                             <option value="COORDINATOR">Coordinador</option>
                             <option value="TEACHER">Ayudante</option>
+                            <option value="SUPER_ADMIN">Super Admin</option>
                         </select>
                         <input
                             value={search}
@@ -468,6 +470,7 @@ export function PersonnelManager({
                                         <option value="TEACHER">Ayudante</option>
                                         <option value="COORDINATOR">Coordinador</option>
                                         <option value="ADMIN">Administrador</option>
+                                        <option value="SUPER_ADMIN">Super Admin</option>
                                     </select>
 
                                     <label>

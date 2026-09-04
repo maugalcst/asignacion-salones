@@ -10,10 +10,10 @@ export function LoginForm() {
   return (
     <form action={action} className="login-form">
       <div className="login-field">
-        <label htmlFor="username">Usuario</label>
+        <label htmlFor="identifier">Usuario o correo</label>
         <div className="input-wrap">
           <User size={16} className="input-icon" />
-          <input id="username" name="username" type="text" placeholder="usuario@uanl.edu.mx" required />
+          <input id="identifier" name="identifier" type="text" placeholder="usuario o usuario@uanl.edu.mx" required />
         </div>
       </div>
       <div className="login-field">
