@@ -68,9 +68,10 @@ model Session {
 }
 
 model Career {
-  id      Int    @id @default(autoincrement())
+  id      Int     @id @default(autoincrement())
   name    String
-  acronym String @unique
+  acronym String  @unique
+  active  Boolean @default(true)
 
   users    User[]
   subjects Subject[]
@@ -83,12 +84,16 @@ model Career {
 
 model Subject {
   id       Int    @id @default(autoincrement())
+  planCode String @default("")
   code     String
   name     String
   type     String @default("Ordinaria")
   semester Int
   duracion Int?
   cantidad Int    @default(0)
+  offer    String?
+  platform String?
+  language String?
 
   careers       Career[]
   groupSubjects GroupSubject[]
@@ -100,7 +105,7 @@ model Subject {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([code, type])
+  @@unique([planCode, code])
 }
 
 model AcademicGroup {
@@ -119,8 +124,6 @@ model AcademicGroup {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  @@unique([code, careerId, semester])
 }
 
 model GroupSubject {
@@ -141,12 +144,13 @@ model GroupSubject {
 }
 
 model SchoolHour {
-  id        Int    @id @default(autoincrement())
-  code      String @unique
+  id        Int     @id @default(autoincrement())
+  code      String  @unique
   shift     String
   startTime String
   endTime   String
   sortOrder Int
+  active    Boolean @default(true)
 
   requestSchedules ClassroomRequestSchedule[]
   unavailable       ClassroomUnavailableSlot[]

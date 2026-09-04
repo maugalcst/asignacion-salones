@@ -33,5 +33,13 @@
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
+  },
+  "allowScripts": {
+    "@prisma/client": true,
+    "@prisma/engines": true,
+    "esbuild": true,
+    "fsevents@2.3.3": true,
+    "prisma": true,
+    "sharp": true
   }
 }

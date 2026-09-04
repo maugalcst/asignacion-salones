@@ -746,26 +746,6 @@ export async function requestGroupClassroomAction(
       };
     }
 
-    let group = await prisma.academicGroup.findFirst({
-      where: {
-        code: normalizedGroupCode,
-        careerId: user.careerId,
-        semester: subject.semester
-      }
-    });
-
-    if (!group) {
-      group = await prisma.academicGroup.create({
-        data: {
-          code: normalizedGroupCode,
-          careerId: user.careerId,
-          semester: subject.semester,
-          students: 0,
-          coordinatorId: user.id
-        }
-      });
-    }
-
     const unavailableSlots = await prisma.classroomUnavailableSlot.findMany({
       where: {
         classroomId,
@@ -857,38 +837,64 @@ export async function requestGroupClassroomAction(
       };
     }
 
-    let assignment = await prisma.groupSubject.findFirst({
-      where: {
-        groupId: group.id,
-        subjectId
-      }
-    });
+    const careerId = user.careerId;
 
-    if (!assignment) {
-      assignment = await prisma.groupSubject.create({
-        data: {
+    // El grupo y la relación grupo-materia se crean junto con la solicitud:
+    // si algo falla no deben quedar registros huérfanos en la base.
+    await prisma.$transaction(async (tx) => {
+      let group = await tx.academicGroup.findFirst({
+        where: {
+          code: normalizedGroupCode,
+          careerId,
+          semester: subject.semester
+        }
+      });
+
+      if (!group) {
+        group = await tx.academicGroup.create({
+          data: {
+            code: normalizedGroupCode,
+            careerId,
+            semester: subject.semester,
+            students: 0,
+            coordinatorId: user.id
+          }
+        });
+      }
+
+      let assignment = await tx.groupSubject.findFirst({
+        where: {
           groupId: group.id,
           subjectId
         }
       });
-    }
 
-    await prisma.classroomRequest.create({
-      data: {
-        coordinatorId: user.id,
-        careerId: user.careerId,
-        subjectId,
-        classroomId,
-        semester: subject.semester,
-        groupSubjectId: assignment.id,
-        status: RequestStatus.PENDING,
-        schedules: {
-          create: schedules.map((schedule) => ({
-            dayOfWeek: schedule.dayOfWeek,
-            schoolHourId: schedule.schoolHourId
-          }))
-        }
+      if (!assignment) {
+        assignment = await tx.groupSubject.create({
+          data: {
+            groupId: group.id,
+            subjectId
+          }
+        });
       }
+
+      await tx.classroomRequest.create({
+        data: {
+          coordinatorId: user.id,
+          careerId,
+          subjectId,
+          classroomId,
+          semester: subject.semester,
+          groupSubjectId: assignment.id,
+          status: RequestStatus.PENDING,
+          schedules: {
+            create: schedules.map((schedule) => ({
+              dayOfWeek: schedule.dayOfWeek,
+              schoolHourId: schedule.schoolHourId
+            }))
+          }
+        }
+      });
     });
 
     revalidatePath("/dashboard");
