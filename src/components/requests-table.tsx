@@ -1,21 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { FileSpreadsheet, Loader2 } from "lucide-react";
 import { RequestActions } from "./request-actions";
-
-const dayLabels: Record<string, string> = {
-  MONDAY: "Lunes", TUESDAY: "Martes", WEDNESDAY: "Miércoles",
-  THURSDAY: "Jueves", FRIDAY: "Viernes", SATURDAY: "Sábado"
-};
-
-const shortDayLabels: Record<string, string> = {
-  MONDAY: "L", TUESDAY: "M", WEDNESDAY: "M",
-  THURSDAY: "J", FRIDAY: "V", SATURDAY: "S"
-};
-
-const statusLabels: Record<string, string> = {
-  PENDING: "Pendiente", APPROVED: "Aprobado", REJECTED: "Rechazado"
-};
+import {
+  emptyFilters,
+  formatSchedules,
+  matchesFilters,
+  statusLabels,
+  type FilterableSchedule
+} from "@/lib/request-filters";
 
 const statusOptions = [
   { value: "all", label: "Estado" },
@@ -23,11 +17,6 @@ const statusOptions = [
   { value: "APPROVED", label: "Aprobado" },
   { value: "REJECTED", label: "Rechazado" }
 ];
-
-type Schedule = {
-  dayOfWeek: string;
-  schoolHour: { code: string; startTime: string; endTime: string; sortOrder: number };
-};
 
 type Request = {
   id: number;
@@ -39,62 +28,67 @@ type Request = {
   subject: { code: string; name: string; type: string };
   groupSubject: { group: { code: string } } | null;
   semester: number;
-  schedules: Schedule[];
+  schedules: FilterableSchedule[];
 };
 
-function formatSchedules(schedules: Schedule[]) {
-  if (schedules.length === 0) return "Sin horario";
-  const groupedByHour = new Map<string, { sortOrder: number; startTime: string; endTime: string; days: string[] }>();
-  for (const schedule of schedules) {
-    const hourCode = schedule.schoolHour.code;
-    if (!groupedByHour.has(hourCode)) {
-      groupedByHour.set(hourCode, {
-        sortOrder: schedule.schoolHour.sortOrder,
-        startTime: schedule.schoolHour.startTime,
-        endTime: schedule.schoolHour.endTime,
-        days: []
-      });
-    }
-    groupedByHour.get(hourCode)?.days.push(shortDayLabels[schedule.dayOfWeek] || schedule.dayOfWeek);
-  }
-  return Array.from(groupedByHour.entries())
-    .sort(([, a], [, b]) => a.sortOrder - b.sortOrder)
-    .map(([hourCode, data]) => `${data.days.join("")} · ${hourCode} · ${data.startTime}-${data.endTime}`)
-    .join(", ");
-}
-
 export function RequestsTable({ requests }: { requests: Request[] }) {
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [careerFilter, setCareerFilter] = useState("all");
+  const [search, setSearch] = useState(emptyFilters.search);
+  const [statusFilter, setStatusFilter] = useState(emptyFilters.status);
+  const [careerFilter, setCareerFilter] = useState(emptyFilters.career);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const careers = useMemo(() =>
     [...new Map(requests.map(r => [r.career.id, r.career])).values()],
     [requests]
   );
 
-  const filtered = useMemo(() =>
-    requests.filter(r => {
-      if (search) {
-        const q = search.toLowerCase();
-        if (
-          !r.coordinator.name.toLowerCase().includes(q) &&
-          !r.career.acronym.toLowerCase().includes(q) &&
-          !r.career.name.toLowerCase().includes(q) &&
-          !r.semester.toString().includes(q) &&
-          !r.subject.code.toLowerCase().includes(q) &&
-          !r.subject.name.toLowerCase().includes(q) &&
-          !r.classroom.building.toLowerCase().includes(q) &&
-          !r.classroom.number.toLowerCase().includes(q) &&
-          !(r.groupSubject?.group.code || "").toLowerCase().includes(q)
-        ) return false;
-      }
-      if (statusFilter !== "all" && r.status !== statusFilter) return false;
-      if (careerFilter !== "all" && r.career.id.toString() !== careerFilter) return false;
-      return true;
-    }),
-    [requests, search, statusFilter, careerFilter]
+  const filters = useMemo(
+    () => ({ search, status: statusFilter, career: careerFilter }),
+    [search, statusFilter, careerFilter]
   );
+
+  const filtered = useMemo(
+    () => requests.filter(r => matchesFilters(r, filters)),
+    [requests, filters]
+  );
+
+  // Se descarga por fetch y no con un enlace directo para poder avisar cuando
+  // algo sale mal: si la sesión expiró, un enlace guardaría la página de login
+  // dentro de un archivo .xlsx que Excel ya no puede abrir.
+  const exportToExcel = async () => {
+    setExporting(true);
+    setExportError(null);
+
+    try {
+      const query = new URLSearchParams({
+        buscar: filters.search,
+        estado: filters.status,
+        carrera: filters.career
+      });
+
+      const response = await fetch(`/admin/solicitudes/export?${query}`);
+
+      if (!response.ok) {
+        throw new Error(await response.text() || "No se pudo generar el archivo.");
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = url;
+      link.download = `solicitudes-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "No se pudo generar el archivo.");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <section className="table-card">
@@ -112,8 +106,22 @@ export function RequestsTable({ requests }: { requests: Request[] }) {
             {careers.map(c => <option key={c.id} value={c.id}>{c.acronym}</option>)}
           </select>
           <input placeholder="Buscar por coordinador, carrera, materia, salón..." value={search} onChange={e => setSearch(e.target.value)} />
+          <button
+            type="button"
+            className="export-button"
+            onClick={exportToExcel}
+            disabled={exporting || filtered.length === 0}
+            title={filtered.length === 0 ? "No hay solicitudes que exportar" : "Descargar las solicitudes visibles en Excel"}
+          >
+            {exporting
+              ? <><Loader2 size={14} className="spin" /> Generando...</>
+              : <><FileSpreadsheet size={14} /> Exportar Excel</>}
+          </button>
         </div>
       </div>
+
+      {exportError && <p className="export-error">{exportError}</p>}
+
       <div className="table-scroll">
         <table>
           <thead>

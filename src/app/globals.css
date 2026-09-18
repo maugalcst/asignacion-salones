@@ -511,6 +511,42 @@ a {
     min-width: 100px
 }
 
+.export-button {
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    border: 1px solid #1f3b54;
+    border-radius: 3px;
+    background: #1f3b54;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap
+}
+
+.export-button:hover:not(:disabled) {
+    background: #2a4d6d;
+    border-color: #2a4d6d
+}
+
+.export-button:disabled {
+    background: #c3ccd2;
+    border-color: #c3ccd2;
+    cursor: not-allowed
+}
+
+.export-error {
+    margin: 0;
+    padding: 8px 14px;
+    font-size: 11px;
+    color: #a12d2d;
+    background: #fdecec;
+    border-bottom: 1px solid #f5d2d2
+}
+
 th.sortable {
     cursor: pointer;
     user-select: none;
@@ -762,9 +798,14 @@ tbody tr:hover {
     }
 
     .table-filters select,
-    .table-filters input {
+    .table-filters input,
+    .table-filters .export-button {
         width: 100%;
         min-width: 0
+    }
+
+    .export-button {
+        justify-content: center
     }
 
     .multi-menu {
