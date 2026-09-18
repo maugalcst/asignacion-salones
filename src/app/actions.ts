@@ -310,6 +310,32 @@ export async function savePersonAction(
 
     const { id, password, ...data } = parsed.data;
 
+    // Nadie más que el propio Super Admin edita esa cuenta. Sin esto, esconderla
+    // de la lista y blindarla contra el borrado no serviría de nada: a un
+    // administrador le bastaría con cambiarle la contraseña para entrar como ella.
+    if (id && current.role !== "SUPER_ADMIN") {
+      const owner = await prisma.user.findUnique({ where: { id }, select: { role: true } });
+
+      if (owner?.role === "SUPER_ADMIN") {
+        return { ok: false, error: NO_PERMISSION };
+      }
+    }
+
+    // El rol de Super Admin no se reparte desde el panel: la cuenta viene con el
+    // sistema. Se valida aquí y no sólo en el formulario porque los Server
+    // Actions son endpoints HTTP y se pueden invocar sin pasar por la interfaz.
+    // Editar al Super Admin que ya existe sí se permite; lo que se bloquea es
+    // crear uno nuevo o ascender a otra cuenta a ese rol.
+    if (data.role === "SUPER_ADMIN") {
+      const target = id
+        ? await prisma.user.findUnique({ where: { id }, select: { role: true } })
+        : null;
+
+      if (target?.role !== "SUPER_ADMIN") {
+        return { ok: false, error: "No se pueden crear cuentas de Super Admin." };
+      }
+    }
+
     if (id) {
       await prisma.user.update({
         where: { id },
@@ -376,7 +402,16 @@ export async function deletePersonAction(
       return { ok: false, error: "Usuario no encontrado." };
     }
 
-    if (current.role !== "SUPER_ADMIN" && (targetUser.role === "SUPER_ADMIN" || targetUser.role === "ADMIN")) {
+    // La cuenta de Super Admin no se elimina nunca: ni un administrador, ni la
+    // propia cuenta. Es la única que puede administrar a los administradores, y
+    // borrarla dejaría al sistema sin manera de recuperarse.
+    if (targetUser.role === "SUPER_ADMIN") {
+      return { ok: false, error: "La cuenta de Super Admin no se puede eliminar." };
+    }
+
+    // El caso SUPER_ADMIN ya quedó cubierto arriba; aquí sólo resta impedir que
+    // un administrador elimine a otro administrador.
+    if (current.role !== "SUPER_ADMIN" && targetUser.role === "ADMIN") {
       return { ok: false, error: "No tienes permiso para eliminar este usuario." };
     }
 

@@ -80,11 +80,13 @@ const emptyForm: PersonForm = {
 export function PersonnelManager({
     people,
     careers,
-    currentUserId
+    currentUserId,
+    canSeeSuperAdmin
 }: {
     people: Person[];
     careers: Career[];
     currentUserId: number;
+    canSeeSuperAdmin: boolean;
 }) {
     const [mode, setMode] = useState<"add" | "edit" | "delete" | null>(null);
     const [form, setForm] = useState<PersonForm>(emptyForm);
@@ -306,7 +308,10 @@ export function PersonnelManager({
                             <option value="ADMIN">Administrador</option>
                             <option value="COORDINATOR">Coordinador</option>
                             <option value="TEACHER">Ayudante</option>
-                            <option value="SUPER_ADMIN">Super Admin</option>
+                            {/* Sin este filtro para los demás roles la lista no
+                                revelaría a nadie, pero sí delataría que la
+                                cuenta de Super Admin existe. */}
+                            {canSeeSuperAdmin && <option value="SUPER_ADMIN">Super Admin</option>}
                         </select>
                         <input
                             value={search}
@@ -470,7 +475,12 @@ export function PersonnelManager({
                                         <option value="TEACHER">Ayudante</option>
                                         <option value="COORDINATOR">Coordinador</option>
                                         <option value="ADMIN">Administrador</option>
-                                        <option value="SUPER_ADMIN">Super Admin</option>
+                                        {/* Super Admin sólo aparece al editar la cuenta que ya lo es,
+                                            para no perder su rol al guardar. No se ofrece al dar de
+                                            alta: ese rol no se crea desde el panel. */}
+                                        {form.role === "SUPER_ADMIN" && (
+                                            <option value="SUPER_ADMIN">Super Admin</option>
+                                        )}
                                     </select>
 
                                     <label>
