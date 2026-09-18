@@ -72,8 +72,8 @@ Abre `http://localhost:3000`.
 
 ## Cuentas de prueba
 
-- Admin: `admin@uanl.edu.mx` / `admin123`
-- Super admin: `superadmin` o `rxbalboa@gmail.com` / `K1289067`
+- Admin
+- Super admin
 
 ## Base de datos incluida
 
