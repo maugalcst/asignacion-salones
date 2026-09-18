@@ -1,23 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-
-const dayLabels: Record<string, string> = {
-  MONDAY: "Lunes", TUESDAY: "Martes", WEDNESDAY: "Miércoles",
-  THURSDAY: "Jueves", FRIDAY: "Viernes", SATURDAY: "Sábado"
-};
-
-const dayOptions = [
-  { value: "MONDAY", label: "Lunes" }, { value: "TUESDAY", label: "Martes" },
-  { value: "WEDNESDAY", label: "Miércoles" }, { value: "THURSDAY", label: "Jueves" },
-  { value: "FRIDAY", label: "Viernes" }, { value: "SATURDAY", label: "Sábado" }
-];
-
-type Schedule = {
-  id: number;
-  dayOfWeek: string;
-  schoolHour: { code: string; startTime: string };
-};
+import { ExportButton } from "./export-button";
+import {
+  dayLabels,
+  dayOptions,
+  emptyAssignmentFilters,
+  expandBySchedule,
+  matchesAssignmentFilters,
+  type AssignmentSchedule
+} from "@/lib/assignment-filters";
 
 type Request = {
   id: number;
@@ -29,14 +21,14 @@ type Request = {
   classroom: { building: string; number: string };
   subject: { code: string };
   groupSubject: { group: { code: string } } | null;
-  schedules: Schedule[];
+  schedules: AssignmentSchedule[];
 };
 
 export function AssignedTable({ requests }: { requests: Request[] }) {
-  const [search, setSearch] = useState("");
-  const [careerFilter, setCareerFilter] = useState("all");
-  const [dayFilter, setDayFilter] = useState("all");
-  const [buildingFilter, setBuildingFilter] = useState("all");
+  const [search, setSearch] = useState(emptyAssignmentFilters.search);
+  const [careerFilter, setCareerFilter] = useState(emptyAssignmentFilters.career);
+  const [dayFilter, setDayFilter] = useState(emptyAssignmentFilters.day);
+  const [buildingFilter, setBuildingFilter] = useState(emptyAssignmentFilters.building);
 
   const careers = useMemo(() =>
     [...new Map(requests.map(r => [r.career.id, r.career])).values()],
@@ -47,34 +39,17 @@ export function AssignedTable({ requests }: { requests: Request[] }) {
     [requests]
   );
 
-  const filtered = useMemo(() =>
-    requests.filter(r => {
-      if (search) {
-        const q = search.toLowerCase();
-        if (
-          !r.coordinator.name.toLowerCase().includes(q) &&
-          !r.career.acronym.toLowerCase().includes(q) &&
-          !r.semester.toString().includes(q) &&
-          !r.subject.code.toLowerCase().includes(q) &&
-          !`${r.classroom.building}-${r.classroom.number}`.toLowerCase().includes(q) &&
-          !r.classroom.building.toLowerCase().includes(q) &&
-          !(r.groupSubject?.group.code || "").toLowerCase().includes(q)
-        ) return false;
-      }
-      if (careerFilter !== "all" && r.career.id.toString() !== careerFilter) return false;
-      if (dayFilter !== "all" && !r.schedules.some(s => s.dayOfWeek === dayFilter)) return false;
-      if (buildingFilter !== "all" && r.classroom.building !== buildingFilter) return false;
-      return true;
-    }),
-    [requests, search, careerFilter, dayFilter, buildingFilter]
+  const filters = useMemo(
+    () => ({ search, career: careerFilter, day: dayFilter, building: buildingFilter }),
+    [search, careerFilter, dayFilter, buildingFilter]
   );
 
-  const rows = useMemo(() =>
-    filtered.flatMap(r =>
-      r.schedules.map(s => ({ ...r, schedule: s }))
-    ),
-    [filtered]
+  const filtered = useMemo(
+    () => requests.filter(r => matchesAssignmentFilters(r, filters)),
+    [requests, filters]
   );
+
+  const rows = useMemo(() => expandBySchedule(filtered, filters.day), [filtered, filters.day]);
 
   return (
     <section className="table-card">
@@ -97,6 +72,17 @@ export function AssignedTable({ requests }: { requests: Request[] }) {
             {buildings.map(b => <option key={b} value={b}>{b}</option>)}
           </select>
           <input placeholder="Buscar por coordinador, carrera, materia, salón..." value={search} onChange={e => setSearch(e.target.value)} />
+          <ExportButton
+            url={`/admin/asignaciones/export?${new URLSearchParams({
+              buscar: filters.search,
+              carrera: filters.career,
+              dia: filters.day,
+              edificio: filters.building
+            })}`}
+            fileBaseName="salones-asignados"
+            emptyMessage={rows.length === 0 ? "No hay asignaciones que exportar" : undefined}
+            title="Descargar los salones asignados visibles en Excel"
+          />
         </div>
       </div>
       <div className="table-scroll">

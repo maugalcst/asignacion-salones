@@ -538,13 +538,17 @@ a {
     cursor: not-allowed
 }
 
+/* Va dentro de .table-filters, que es flex con wrap: el 100% lo baja a su
+   propio renglón debajo de los controles en vez de apretarlos. */
 .export-error {
+    width: 100%;
     margin: 0;
-    padding: 8px 14px;
+    padding: 6px 10px;
     font-size: 11px;
     color: #a12d2d;
     background: #fdecec;
-    border-bottom: 1px solid #f5d2d2
+    border: 1px solid #f5d2d2;
+    border-radius: 3px
 }
 
 th.sortable {

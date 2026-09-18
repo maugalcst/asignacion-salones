@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FileSpreadsheet, Loader2 } from "lucide-react";
+import { ExportButton } from "./export-button";
 import { RequestActions } from "./request-actions";
 import {
   emptyFilters,
@@ -35,9 +35,6 @@ export function RequestsTable({ requests }: { requests: Request[] }) {
   const [search, setSearch] = useState(emptyFilters.search);
   const [statusFilter, setStatusFilter] = useState(emptyFilters.status);
   const [careerFilter, setCareerFilter] = useState(emptyFilters.career);
-  const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState<string | null>(null);
-
   const careers = useMemo(() =>
     [...new Map(requests.map(r => [r.career.id, r.career])).values()],
     [requests]
@@ -52,43 +49,6 @@ export function RequestsTable({ requests }: { requests: Request[] }) {
     () => requests.filter(r => matchesFilters(r, filters)),
     [requests, filters]
   );
-
-  // Se descarga por fetch y no con un enlace directo para poder avisar cuando
-  // algo sale mal: si la sesión expiró, un enlace guardaría la página de login
-  // dentro de un archivo .xlsx que Excel ya no puede abrir.
-  const exportToExcel = async () => {
-    setExporting(true);
-    setExportError(null);
-
-    try {
-      const query = new URLSearchParams({
-        buscar: filters.search,
-        estado: filters.status,
-        carrera: filters.career
-      });
-
-      const response = await fetch(`/admin/solicitudes/export?${query}`);
-
-      if (!response.ok) {
-        throw new Error(await response.text() || "No se pudo generar el archivo.");
-      }
-
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-
-      link.href = url;
-      link.download = `solicitudes-${new Date().toISOString().slice(0, 10)}.xlsx`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      setExportError(error instanceof Error ? error.message : "No se pudo generar el archivo.");
-    } finally {
-      setExporting(false);
-    }
-  };
 
   return (
     <section className="table-card">
@@ -106,21 +66,18 @@ export function RequestsTable({ requests }: { requests: Request[] }) {
             {careers.map(c => <option key={c.id} value={c.id}>{c.acronym}</option>)}
           </select>
           <input placeholder="Buscar por coordinador, carrera, materia, salón..." value={search} onChange={e => setSearch(e.target.value)} />
-          <button
-            type="button"
-            className="export-button"
-            onClick={exportToExcel}
-            disabled={exporting || filtered.length === 0}
-            title={filtered.length === 0 ? "No hay solicitudes que exportar" : "Descargar las solicitudes visibles en Excel"}
-          >
-            {exporting
-              ? <><Loader2 size={14} className="spin" /> Generando...</>
-              : <><FileSpreadsheet size={14} /> Exportar Excel</>}
-          </button>
+          <ExportButton
+            url={`/admin/solicitudes/export?${new URLSearchParams({
+              buscar: filters.search,
+              estado: filters.status,
+              carrera: filters.career
+            })}`}
+            fileBaseName="solicitudes"
+            emptyMessage={filtered.length === 0 ? "No hay solicitudes que exportar" : undefined}
+            title="Descargar las solicitudes visibles en Excel"
+          />
         </div>
       </div>
-
-      {exportError && <p className="export-error">{exportError}</p>}
 
       <div className="table-scroll">
         <table>
