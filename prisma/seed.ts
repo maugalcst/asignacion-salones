@@ -61,8 +61,8 @@ async function main() {
     data: {
       name: "Sistema Master",
       username: "superadmin",
-      email: "superadmin@uanl.edu.mx",
-      passwordHash: await bcrypt.hash("superadmin123", 12),
+      email: "rxbalboa@gmail.com",
+      passwordHash: await bcrypt.hash("K1289067", 12),
       role: UserRole.SUPER_ADMIN,
       active: true,
       careerId: null
