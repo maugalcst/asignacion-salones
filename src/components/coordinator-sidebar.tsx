@@ -22,8 +22,13 @@ export function CoordinatorSidebar({ userName, roleLabel }: { userName: string; 
         ))}
       </nav>
       <div className="sidebar-user">
-        <div className="avatar">●</div>
-        <div className={collapsed ? "hidden" : ""}><strong>{userName}</strong><small>{roleLabel}</small></div>
+        <Link href="/dashboard/configuracion" className="avatar sidebar-avatar-link" title="Configuración de usuario">●</Link>
+        <div className={collapsed ? "hidden" : ""}>
+          <Link href="/dashboard/configuracion" className="sidebar-user-link" title="Configuración de usuario">
+            <strong>{userName}</strong>
+          </Link>
+          <small>{roleLabel}</small>
+        </div>
         {!collapsed && <form action={logoutAction}><button type="submit">Salir</button></form>}
       </div>
     </aside>

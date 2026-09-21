@@ -25,8 +25,13 @@ export function Sidebar({ userName, career }: { userName: string; career?: strin
         ))}
       </nav>
       <div className="sidebar-user">
-        <div className="avatar">●</div>
-        <div className={collapsed ? "hidden" : ""}><strong>{userName}</strong><small>{career || "Administración"}</small></div>
+        <Link href="/admin/configuracion" className="avatar sidebar-avatar-link" title="Configuración de usuario">●</Link>
+        <div className={collapsed ? "hidden" : ""}>
+          <Link href="/admin/configuracion" className="sidebar-user-link" title="Configuración de usuario">
+            <strong>{userName}</strong>
+          </Link>
+          <small>{career || "Administración"}</small>
+        </div>
         {!collapsed && <form action={logoutAction}><button type="submit">Salir</button></form>}
       </div>
     </aside>

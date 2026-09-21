@@ -1027,3 +1027,113 @@ export async function requestGroupClassroomAction(
     return actionError(error, "No se pudo enviar la solicitud.");
   }
 }
+
+const updateEmailSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .min(1, "El correo electrónico es obligatorio.")
+    .max(100, "El correo electrónico no puede exceder 100 caracteres.")
+    .email("Ingresa un correo electrónico válido.")
+});
+
+export async function updateEmailAction(
+  firstArg: FormData | ActionState | undefined,
+  secondArg?: FormData
+): Promise<ActionState> {
+  const formData = getFormData(firstArg, secondArg);
+
+  try {
+    const user = await requireUser();
+
+    const parsed = updateEmailSchema.safeParse({
+      email: formData.get("email")
+    });
+
+    if (!parsed.success) {
+      return { ok: false, error: validationError(parsed.error) };
+    }
+
+    const normalizedEmail = parsed.data.email.toLowerCase();
+
+    const existing = await prisma.user.findFirst({
+      where: {
+        email: normalizedEmail,
+        id: { not: user.id }
+      },
+      select: { id: true }
+    });
+
+    if (existing) {
+      return { ok: false, error: "Ese correo electrónico ya está registrado por otro usuario." };
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { email: normalizedEmail }
+    });
+
+    revalidatePath("/admin/configuracion");
+    revalidatePath("/dashboard/configuracion");
+    revalidatePath("/admin/personal");
+
+    return actionOk("Correo electrónico actualizado correctamente.");
+  } catch (error) {
+    return actionError(error, "No se pudo actualizar el correo electrónico.");
+  }
+}
+
+const updatePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Ingresa tu contraseña actual."),
+    newPassword: z.string().min(6, "La nueva contraseña debe tener al menos 6 caracteres."),
+    confirmPassword: z.string().min(1, "Confirma tu nueva contraseña.")
+  })
+  .refine((data) => data.newPassword === data.confirmPassword, {
+    message: "La confirmación de la contraseña no coincide.",
+    path: ["confirmPassword"]
+  });
+
+export async function updatePasswordAction(
+  firstArg: FormData | ActionState | undefined,
+  secondArg?: FormData
+): Promise<ActionState> {
+  const formData = getFormData(firstArg, secondArg);
+
+  try {
+    const user = await requireUser();
+
+    const parsed = updatePasswordSchema.safeParse({
+      currentPassword: formData.get("currentPassword"),
+      newPassword: formData.get("newPassword"),
+      confirmPassword: formData.get("confirmPassword")
+    });
+
+    if (!parsed.success) {
+      return { ok: false, error: validationError(parsed.error) };
+    }
+
+    const dbUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { passwordHash: true }
+    });
+
+    if (!dbUser || !(await bcrypt.compare(parsed.data.currentPassword, dbUser.passwordHash))) {
+      return { ok: false, error: "La contraseña actual es incorrecta." };
+    }
+
+    const passwordHash = await bcrypt.hash(parsed.data.newPassword, 12);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash }
+    });
+
+    revalidatePath("/admin/configuracion");
+    revalidatePath("/dashboard/configuracion");
+
+    return actionOk("Contraseña actualizada correctamente.");
+  } catch (error) {
+    return actionError(error, "No se pudo actualizar la contraseña.");
+  }
+}
